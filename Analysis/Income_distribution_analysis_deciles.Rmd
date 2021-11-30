@@ -1,0 +1,2487 @@
+---
+title: " Income distribution analysis "
+Authors: Kanishka Narayan, Brian O'Neill & Stephanie Waldhoff
+output:
+  pdf_document: default
+  html_notebook: default
+  word_document: default
+---
+
+#  Load libraries
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggpmisc)
+library(gplots)
+library(knitr)
+library(data.table)
+library(assertthat)
+library(rpart)
+
+`%notin%` <- Negate(`%in%`)
+```
+#  Load raw data and parameters
+```{r}
+
+
+path_to_WIDER <- "C:/Users/nara836/Documents/WIDER.csv"
+path_to_WIID <- "C:/Users/nara836/Documents/WIID_Final.csv"
+path_to_pov_cal <- "C:/Users/nara836/Documents/PovCal.csv"
+path_to_education_data <- "C:/Users/nara836/Documents/Education_data_SSP.csv"
+path_to_tfp_data <- "C:/Users/nara836/Documents/TFP_Data_SSP2.csv"
+path_to_pop_data <-  "C:/Users/nara836/Documents/pop_data.csv"
+
+WIDER <- read.csv(path_to_WIDER,stringsAsFactors = FALSE) 
+WIID <-  read.csv(path_to_WIID,stringsAsFactors = FALSE)
+PovCal <- read.csv(path_to_pov_cal,stringsAsFactors = FALSE)
+Education_data <- read.csv(path_to_education_data, stringsAsFactors = FALSE)
+TFP_data <- read.csv(path_to_tfp_data, stringsAsFactors = FALSE)
+pop_data <- read.csv(path_to_pop_data, stringsAsFactors = FALSE)
+
+
+countries <- c("United States","China","Nigeria","USA")
+
+years <- 1950:2015
+
+repeat_add_columns <- function(x, y) {
+  UNIQUE_JOIN_FIELD <- NULL           # silence package checks.
+  #assert_that(tibble::is_tibble(x))
+  #assert_that(tibble::is_tibble(y))
+
+  x %>%
+    mutate(UNIQUE_JOIN_FIELD = 1) %>%
+    full_join(mutate(y, UNIQUE_JOIN_FIELD = 1), by = "UNIQUE_JOIN_FIELD") %>%
+    select(-UNIQUE_JOIN_FIELD)
+}
+
+approx_fun <- function(year, value, rule = 1) {
+  assert_that(is.numeric(year))
+  assert_that(is.numeric(value))
+
+  if(rule == 1 | rule == 2) {
+    tryCatch(stats::approx(as.vector(year), value, rule = rule, xout = year, ties = mean)$y,
+             error = function(e) NA)
+
+  } else {
+    stop("Use fill_exp_decay_extrapolate!")
+  }
+}
+
+
+year_data <- tibble(year= years) %>% filter(year %notin% c(unique(Education_data$year)))
+
+Education_data <- as_tibble(Education_data)
+
+Education_data %>% gather("var","value","Primary_prct":"Tertiary_prct") %>% select(-year,-value) %>% distinct() %>% repeat_add_columns(year_data) %>% mutate(value=NA) %>% spread("var","value")->Education_data_interp
+
+Education_data_interp <- as.data.frame(Education_data_interp)
+
+Education_data %>% bind_rows(Education_data_interp) %>%
+  arrange(country,year) %>% 
+  #select(-Total, -Primary, -Secondary, -Tertiary) %>% 
+  distinct() %>% 
+  group_by(country) %>% 
+  mutate(Primary_prct = ifelse(is.na(Primary_prct),approx_fun(year,Primary_prct, rule=1),Primary_prct),
+         Secondary_prct = ifelse(is.na(Secondary_prct),approx_fun(year,Secondary_prct, rule=1),Secondary_prct),
+         Tertiary_prct = ifelse(is.na(Tertiary_prct),approx_fun(year,Tertiary_prct, rule=1),Tertiary_prct)) %>%
+  ungroup() %>% 
+  mutate(Un_educated = 1-(Primary_prct+Secondary_prct+Tertiary_prct))->Education_data
+
+
+
+year_of_analysis <- c(1990:2020)
+resource_type <- c("Consumption","Income (net)")
+area<- c("All")
+USD_curr <- c("United States dollar","US$2011PPP")
+
+scheme_basic <- theme_bw() +
+    theme(legend.text = element_text(size = 12)) +
+    theme(legend.title = element_text(size = 12)) +
+    theme(axis.text = element_text(size = 11)) +
+    theme(axis.title = element_text(size = 11, face = "bold")) +
+    theme(plot.title = element_text(size = 12, face = "bold", vjust = 1)) +
+    theme(plot.subtitle = element_text(size = 9, face = "bold", vjust = 1))+ 
+    theme(strip.text = element_text(size = 7))+
+    theme(strip.text.x = element_text(size = 11, face = "bold"))+
+    theme(strip.text.y = element_text(size = 11, face = "bold"))+
+    theme(legend.position = "bottom")+
+    theme(legend.text = element_text(size = 11))+
+    theme(legend.title = element_text(size = 11,color = "black",face="bold"))+
+    theme(axis.text.x= element_text(angle=60,hjust=1))+
+    theme(legend.background = element_blank(),
+        legend.box.background = element_rect(colour = "black"))
+
+"%notin%" <- Negate("%in%")
+
+compute_gini <- function(df){
+                
+                df %>% 
+                distinct() %>% 
+                mutate(share_of_richer_pop = if_else(Category== "d1",0.9,
+                                if_else(Category== "d2", 0.8,
+                                if_else(Category== "d3", 0.7,
+                                if_else(Category== "d4", 0.6,
+                                        if_else(Category == "d5",0.5,
+                                                if_else(Category =="d6", 0.4, if_else(Category == "d7",0.3,                                                       if_else(Category =="d8", 0.2,                                                                       if_else(Category =="d9",0.1,0)))))))))) %>%                                                       
+             mutate(score = (`Income (net)`) *(0.1+ (2*share_of_richer_pop))) %>%   
+  group_by(country,year) %>% 
+  mutate(gini= 1- sum(score)) %>% 
+  ungroup() %>% 
+  select(-score, -share_of_richer_pop) %>%
+  distinct()->df  
+  
+  return(df)
+  
+  
+}
+
+```
+
+# Start Analysis
+
+## LIS data
+
+### Get LIS Data
+
+```{r}
+WIDER %>% 
+  filter(source =="Luxembourg Income Study") %>% 
+  filter(resource %in% c("Income (net)","Consumption"), scale=="Per capita") %>% 
+  gather("Decile","value","d1":"d10") %>% 
+ group_by(country,year,Decile,resource,source) %>% 
+ mutate(value=sum(value)) %>% 
+ ungroup() ->LIS_Data
+```
+
+
+
+### Figure 2: Compare Income vs consumption (mean)
+```{r,fig.height=10,fig.width=10}
+
+formula <- y ~ x
+
+LIS_Data %>% 
+  select(country,year,resource, mean, incomegroup) %>%
+  mutate(mean= as.numeric(mean)/1000000) %>% 
+  filter(mean<5) %>% 
+  distinct() %>% 
+  spread(resource,mean) %>% 
+  na.omit()->mean_data
+
+g <- ggplot(data=mean_data, aes(x=`Income (net)`,y=Consumption))+
+     geom_point(aes(color=incomegroup))+
+     stat_poly_eq(aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+               label.x.npc = "left", label.y.npc = 0.7,
+               formula = formula, parse = TRUE, size = 5)+
+    ggtitle("Comparison of mean Income and Consumption per capita across country, years from LIS")+
+    labs(subtitle = paste0("n = 116 , Units are in millions of local currency"))+
+     geom_abline(slope=1, color= "blue", linetype = "dashed")+
+     xlim(0,1)+
+     ylim(0,1)
+     
+g
+```
+
+
+### Figure 3: Compare Income vs consumption (median)
+
+```{r,fig.height=10,fig.width=10}
+
+formula <- y ~ x
+
+LIS_Data %>% 
+  select(country,year,resource, median, incomegroup) %>%
+  mutate(median= as.numeric(median)/1000000) %>% 
+  filter(median<5) %>% 
+  distinct() %>% 
+  spread(resource,median) %>% 
+  na.omit()->median_data
+
+g <- ggplot(data=median_data, aes(x=`Income (net)`,y=Consumption))+
+     geom_point(aes(color= incomegroup))+
+     stat_poly_eq(aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+               label.x.npc = "left", label.y.npc = 0.7,
+               formula = formula, parse = TRUE, size = 5)+
+    ggtitle("Comparison of median Income and Consumption per capita across country, years from LIS")+
+    labs(subtitle = paste0("n = 116 , Units are in millions of local currency"))+
+     geom_abline(slope=1, color= "blue", linetype = "dashed")+
+     xlim(0,1.2)+
+     ylim(0,1.2)
+
+g
+
+```
+
+### Figure 4: Compare Income vs consumption distribution values by quintile
+
+```{r,fig.height=10,fig.width=10}
+formula <- y ~ x
+
+LIS_Data %>% 
+  select(country,year,resource, value,Decile,incomegroup) %>%
+  rename(Category =Decile) %>% 
+  distinct() %>% 
+  spread(resource,value) %>% 
+  na.omit()->dist_data
+
+g <- ggplot(data=dist_data, aes(x=`Income (net)`,y=Consumption))+
+     geom_point(aes(color=incomegroup))+
+     stat_poly_eq(aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+               label.x.npc = "left",
+               formula = formula, parse = TRUE, size = 3)+
+    ggtitle("Comparison of Distribution values across countries, years from LIS")+
+    labs(subtitle = paste0("n = 116 , Units are in percent (percent of total income)"))+
+    geom_abline(slope=1, color= "blue", linetype = "dashed")+
+    facet_wrap(~Category,scales="free")
+
+g
+```
+
+### Figure 5: Distributions by income concepts for USA and China from the LIS database with the GINI coefficient. 
+
+```{r,fig.height=10,fig.width=10}
+LIS_Data %>% 
+  select(country,year,Decile,gini_reported,resource,value) %>% 
+  rename(Category = Decile, income_concept=resource) %>%
+  mutate(income_concept_gini = income_concept) %>% 
+  filter(country %in% countries)-> LIS_Data_Dist
+
+g<- ggplot()+
+    geom_line(data=LIS_Data_Dist, aes(x=year,y=value,color=Category,linetype=income_concept),size=1.2)+
+    geom_point(data=LIS_Data_Dist,aes(x=year,y=gini_reported,shape=income_concept_gini))+
+    facet_wrap(~country,scales="free")+
+    ggtitle("Distribution of income concepts by category across selected countries")+
+    labs(subtitle = "Source : LIS")+
+    ylab("Share of income (percent of total income)")
+
+g + scheme_basic
+  
+
+```
+
+## PovCal data
+
+### Figure 6 : Comparison of quintile values for net income distributions between PovCal and LIS for high income countries where data is available in both datasets.
+
+```{r,fig.height=10,fig.width=10}
+
+Inc_grouping <- WIDER %>%  select(country,incomegroup) %>% distinct()
+
+LIS_Data_PovCal <- LIS_Data %>%  filter(resource %in% c("Income (net)"))
+
+PovCal %>% 
+  gather("Decile","value","d1":"d10") %>% 
+ select(-mean.USD,-median_usd,-gini) %>% 
+ filter(Coverage =="N") %>%   
+ distinct() %>%   
+ group_by(country,year,Decile,income_concept) %>% 
+ mutate(value=sum(value)) %>% 
+ ungroup() %>% 
+ rename(povcal_value = value) %>% 
+ select(country,year,Decile,povcal_value,income_concept) %>%
+ mutate(povcal_value= povcal_value*100) %>%   
+ distinct() %>% 
+ filter(country %in% c(unique(LIS_Data_PovCal$country)),income_concept =="Income")->PovCal_data_LIS_countries 
+
+PovCal_data_LIS_countries %>% 
+  left_join(LIS_Data_PovCal, by= c("country","year","Decile")) %>% 
+   rename(Category=Decile,LIS_value=value) %>% 
+   select(country,year,Category,LIS_value,povcal_value) %>% 
+   distinct() %>% 
+   na.omit() %>% 
+   gather("Source","value","LIS_value":"povcal_value") %>% 
+  left_join(Inc_grouping,by=c("country"))->PovCal_comp_plot 
+
+g<- ggplot(data=PovCal_comp_plot %>% filter(incomegroup %in% c("High income")),aes(x=year,y=value,linetype=Source,color=Category))+
+    geom_line(size=1.2,alpha=0.6)+
+    facet_wrap(~country,scales = "free")+
+    ggtitle("Comparison of income distributions of high income countries between PovCal and LIS")+
+    labs(subtitle = "income concept used here is net income for LIS")+
+    ylab("Share of income (percent of total income)")
+
+
+g +scheme_basic
+```
+
+
+### Figure 7 : Comparison of quintile values for net income distributions between PovCal and LIS for countries other than high income countries where data is available in both datasets.
+
+```{r,fig.height=10,fig.width=10}
+
+`%notin%` <- Negate("%in%")
+Inc_grouping <- WIDER %>%  select(country,incomegroup) %>% distinct()
+
+LIS_Data_PovCal <- LIS_Data %>%  filter(resource %in% c("Income (net)"))
+
+PovCal %>% 
+ gather("Decile","value","d1":"d10") %>% 
+ select(-mean.USD,-median_usd,-gini) %>% 
+  filter(Coverage == "N") %>% 
+ distinct() %>%   
+ group_by(country,year,Decile,income_concept) %>% 
+ mutate(value=sum(value)) %>% 
+ ungroup() %>% 
+ rename(povcal_value = value) %>% 
+ select(country,year,Decile,povcal_value,income_concept) %>%
+ mutate(povcal_value= povcal_value*100,year= as.integer(year)) %>%   
+ distinct() %>% 
+ filter(country %in% c(unique(LIS_Data_PovCal$country))) %>% 
+ filter(income_concept =="Income")  ->PovCal_data_LIS_countries 
+
+PovCal_data_LIS_countries %>% 
+  left_join(LIS_Data_PovCal, by= c("country","year","Decile")) %>% 
+   rename(Category=Decile,LIS_value=value) %>% 
+   select(country,year,Category,LIS_value,povcal_value) %>% 
+   distinct() %>% 
+   na.omit() %>% 
+   gather("Source","value","LIS_value":"povcal_value") %>% 
+  left_join(Inc_grouping,by=c("country")) ->PovCal_comp_plot 
+
+g<- ggplot(data=PovCal_comp_plot %>% filter(incomegroup != "High income", country %notin% c("South Africa","Dominican Republic","Mexico","Serbia")),aes(x=year,y=value,linetype=Source,color=Category))+
+    geom_line(size=1.2,alpha=0.7)+
+    facet_wrap(~country,scales = "free")+
+    ggtitle("Comparison of income distributions of countries (other than high income) between PovCal and LIS")+
+    labs(subtitle = "income concept used here is net income for LIS")+
+    ylab("Share of income (percent of total income)")
+
+
+
+g + scheme_basic
+```
+
+### Figure 8 : Comparison of quintile values for consumption expenditure distributions between PovCal and LIS for high income countries where data is available in both datasets.
+
+```{r,fig.height=10,fig.width=10}
+
+Inc_grouping <- WIDER %>%  select(country,incomegroup) %>% distinct()
+
+LIS_Data_PovCal <- LIS_Data %>%  filter(resource %in% c("Consumption"))
+
+PovCal %>% 
+  gather("Decile","value","d1":"d10") %>% 
+ select(-mean.USD,-median_usd,-gini) %>% 
+ filter(Coverage =="N") %>%   
+ distinct() %>%   
+ group_by(country,year,Decile,income_concept) %>% 
+ mutate(value=sum(value)) %>% 
+ ungroup() %>% 
+ rename(povcal_value = value) %>% 
+ select(country,year,Decile,povcal_value,income_concept) %>%
+ mutate(povcal_value= povcal_value*100,year=as.integer(year)) %>%   
+ distinct() %>% 
+ filter(country %in% c(unique(LIS_Data_PovCal$country))) %>% 
+  filter(income_concept=="Consumption")->PovCal_data_LIS_countries 
+
+PovCal_data_LIS_countries %>% 
+  left_join(LIS_Data_PovCal, by= c("country","year","Decile")) %>% 
+   rename(Category=Decile,LIS_value=value) %>% 
+   select(country,year,Category,LIS_value,povcal_value) %>% 
+   distinct() %>% 
+   na.omit() %>% 
+   gather("Source","value","LIS_value":"povcal_value") %>% 
+  left_join(Inc_grouping,by=c("country"))->PovCal_comp_plot 
+
+g<- ggplot(data=PovCal_comp_plot %>% filter(incomegroup %in% c("High income"),country != "Estonia") %>% na.omit(),aes(x=year,y=value,linetype=Source,color=Category))+
+    geom_line(size=1.2,alpha=0.9)+
+    facet_wrap(~country,scales = "free")+
+    ggtitle("Comparison of consumption distributions of high income countries between PovCal and LIS")+
+    labs(subtitle = "income concept used here is Consumption for LIS")+
+    ylab("Share of income (percent of total income)")
+
+
+g +scheme_basic
+
+```
+
+### Figure 9 : Comparison of quintile values for consumption expenditure distributions between PovCal and LIS for countries other than high income countries where data is available in both datasets.
+
+```{r,fig.height=10,fig.width=10}
+
+`%notin%` <- Negate("%in%")
+Inc_grouping <- WIDER %>%  select(country,incomegroup) %>% distinct()
+
+LIS_Data_PovCal <- LIS_Data %>%  filter(resource %in% c("Consumption"))
+
+PovCal %>% 
+ gather("Decile","value","d1":"d10") %>% 
+ select(-mean.USD,-median_usd,-gini) %>% 
+  filter(Coverage == "N") %>% 
+ distinct() %>%   
+ group_by(country,year,Decile,income_concept) %>% 
+ mutate(value=sum(value)) %>% 
+ ungroup() %>% 
+ rename(povcal_value = value) %>% 
+ select(country,year,Decile,povcal_value,income_concept) %>%
+ mutate(povcal_value= povcal_value*100,year= as.integer(year)) %>%   
+ distinct() %>% 
+ filter(country %in% c(unique(LIS_Data_PovCal$country))) %>% 
+ filter(income_concept =="Consumption")  ->PovCal_data_LIS_countries 
+
+PovCal_data_LIS_countries %>% 
+  left_join(LIS_Data_PovCal, by= c("country","year","Decile")) %>% 
+   rename(Category=Decile,LIS_value=value) %>% 
+   select(country,year,Category,LIS_value,povcal_value) %>% 
+   distinct() %>% 
+   na.omit() %>% 
+   gather("Source","value","LIS_value":"povcal_value") %>% 
+  left_join(Inc_grouping,by=c("country"))->PovCal_comp_plot 
+
+g<- ggplot(data=PovCal_comp_plot %>% filter(incomegroup != "High income", country %notin% c("South Africa","Dominican Republic")),aes(x=year,y=value,linetype=Source,color=Category))+
+    geom_line(size=1.2,alpha=0.7)+
+    facet_wrap(~country,scales = "free")+
+    ggtitle("Comparison of consumption distributions of countries (other than high income) between PovCal and LIS")+
+    labs(subtitle = "income concept used here is Consumption for LIS")+
+    ylab("Share of income (percent of total income)")
+
+
+g + scheme_basic
+```
+
+### Figure 10 : Distribution values from PovCal for selected countries with the GINI co-efficient.
+
+```{r,fig.height=10,fig.width=10}
+PovCal %>% 
+  gather("Decile","value","d1":"d10") %>% 
+ select(-mean.USD,-median_usd) %>% 
+ distinct() %>%   
+ group_by(country,year,Decile,Coverage,income_concept) %>% 
+ mutate(value=sum(value)) %>% 
+ ungroup() %>% 
+ select(country,year,Decile,value,gini,Coverage,income_concept) %>%
+ mutate(value= value*100,year= as.integer(year),gini=gini*100) %>%   
+ distinct() %>% 
+ filter(country %in% c(countries)) %>% 
+  rename(Category= Decile)->PovCal_data_plot 
+
+g <- ggplot(data=PovCal_data_plot, aes(x=year,y=value,color=Category))+
+     geom_line(aes(linetype = income_concept),size=1.2)+
+     geom_point(aes(x=year,y=gini,shape=income_concept),color="blue")+
+     facet_wrap(~country+Coverage,scales="free")+
+     ggtitle("Distributions from PovCal for selected countries with GINI")+
+     labs(subtitle = "R stands for Rural, U for Urban and N for National")+
+    ylab("Share of income (percent of total income)")
+
+
+g + scheme_basic
+```
+
+### Figure 12 : Distributions from WIDER dataset for China.
+
+
+```{r,fig.height=10,fig.width=10}
+WIDER %>% 
+ gather("Decile","value","d1":"d10") %>% 
+  select(country,year,Decile,value,scale,resource,source,areacovr,source_comments) %>% 
+  distinct() %>% 
+  filter(scale=="Per capita") %>% 
+  #mutate(resource = if_else(grepl("Povcal",source_comments),"Income/Consumption",resource)) %>% 
+  mutate(source= if_else(grepl("Povcal",source_comments),"PovCal",source)) %>%
+  mutate(source= if_else(grepl("LIS",source),"Luxembourg Income Study",source)) %>% 
+  rename(income_concept= resource, Category= Decile) %>% 
+  group_by(country,year,Category,income_concept,source,areacovr) %>% 
+  mutate(value=sum(value)) %>% 
+  ungroup() %>% 
+  select(country,year,Category,income_concept,source,value,areacovr) %>% 
+  distinct() %>% 
+  mutate(source= paste0(source, " WIDER"))->Wider_for_plot
+
+g<- ggplot(data=Wider_for_plot %>% filter(country %in% c("China"),income_concept %in% c("Income (net)","Consumption")) %>% na.omit(), aes(x=year,y=value,color=Category,linetype=income_concept))+
+    geom_line(size= 1.2)+
+    facet_wrap(~country+source+areacovr,scales="free_y")  +
+    ylab("Share of income (percent of total income)")
+
+g + scheme_basic
+  
+```
+
+```{r,fig.height=10,fig.width=10}
+WIDER %>%  select(country, year, incomegroup) %>% 
+           distinct()->income_groupings 
+
+WIDER %>% 
+ gather("Decile","value","d1":"d10") %>% 
+  select(country,year,Decile,value,scale,resource,source,areacovr,source_comments) %>% 
+  distinct() %>% 
+  filter(scale=="Per capita") %>% 
+  #mutate(resource = if_else(grepl("Povcal",source_comments),"Income/Consumption",resource)) %>% 
+  mutate(source= if_else(grepl("Povcal",source_comments),"PovCal",source)) %>%
+  mutate(source= if_else(grepl("LIS",source),"Luxembourg Income Study",source)) %>% 
+  rename(income_concept= resource, Category= Decile) %>% 
+  group_by(country,year,Category,income_concept,source,areacovr) %>% 
+  mutate(value=sum(value)) %>% 
+  ungroup() %>% 
+  select(country,year,Category,income_concept,source,value,areacovr) %>% 
+  distinct() %>% 
+  mutate(source= paste0(source, " WIDER")) %>% 
+  spread(income_concept,value) %>% 
+  left_join(income_groupings, by = c("country","year")) %>% 
+  select(country,year,`Income (net)`,Consumption,incomegroup,Category) %>% 
+  na.omit()->Wider_for_plot
+
+
+g <- ggplot(data=Wider_for_plot, aes(x=Consumption,y=`Income (net)`))+
+     geom_point(aes(color=incomegroup))+
+     stat_poly_eq(aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+               label.x.npc = "left",
+               formula = formula, parse = TRUE, size = 3)+
+    xlim(0,100)+
+    ylim(0,100)+
+    ggtitle("Comparison of Distribution values across countries, years from WIDER data")+
+    labs(subtitle = paste0("n = 257 , Units are in percent (percent of total income)"))+
+    geom_abline(slope=1, color= "blue", linetype= "dashed")+
+    facet_wrap(~Category)
+
+g+scheme_basic
+  
+```
+
+```{r,fig.height=10,fig.width=10}
+
+WIDER %>%  select(country, year, incomegroup) %>% 
+           distinct()->income_groupings 
+
+WIDER %>% 
+ gather("Decile","value","d1":"d10") %>% 
+  select(country,year,Decile,value,scale,resource,source,areacovr,source_comments) %>% 
+  distinct() %>% 
+  filter(scale=="Per capita") %>% 
+  #mutate(resource = if_else(grepl("Povcal",source_comments),"Income/Consumption",resource)) %>% 
+  mutate(source= if_else(grepl("Povcal",source_comments),"PovCal",source)) %>%
+  mutate(source= if_else(grepl("LIS",source),"Luxembourg Income Study",source)) %>% 
+  rename(income_concept= resource, Category= Decile) %>% 
+  group_by(country,year,Category,income_concept,source,areacovr) %>% 
+  mutate(value=sum(value)) %>% 
+  ungroup() %>% 
+  select(country,year,Category,income_concept,source,value,areacovr) %>% 
+  distinct() %>% 
+  mutate(source= paste0(source, " WIDER")) %>% 
+  spread(income_concept,value) %>% 
+  left_join(income_groupings, by = c("country","year")) %>% 
+  select(country,year,`Income (net)`,Consumption,incomegroup,Category) %>% 
+  na.omit()->Wider_for_plot
+
+
+Wider_for_plot <- as.data.table(Wider_for_plot)
+
+Wider_for_plot[,list(intercept=coef(lm(`Income (net)` ~ Consumption))[1], coef=coef(lm(`Income (net)` ~ Consumption))[2]),by=Category]->coeffs
+
+
+Wider_for_plot %>% 
+  left_join(coeffs, by= c("Category")) %>% 
+  mutate(imputed_income_share = (Consumption *coef)+intercept)->Wider_for_plot
+
+
+g <- ggplot(data=Wider_for_plot, aes(x=Consumption,y=imputed_income_share))+
+     geom_point(aes(color=incomegroup))+
+    ggtitle("Comparison of Distribution values (using imputed income shares) across countries, years from WIDER")+
+    labs(subtitle = paste0("n = 257 , Units are in percent (percent of total income)"))+
+    geom_abline(slope=1, color= "blue", linetype= "dashed")+
+    facet_wrap(~Category)
+
+g+scheme_basic
+
+
+```
+
+
+
+
+
+
+### Figure 11 : Comparison of distribution values from the latest PovCal data and PovCal data from WIDER for China, Nigeria and India 
+
+
+```{r,fig.height=10,fig.width=10}
+Wider_for_plot %>% 
+  filter(source== "PovCal WIDER")->WIDER_data_povcal
+
+PovCal %>% 
+   gather("Decile","value","d1":"d10") %>% 
+ select(-mean.USD,-median_usd,-gini) %>% 
+ distinct() %>% 
+ mutate(Coverage= if_else(Coverage == "R","Rural",if_else(Coverage == "U", "Urban","All"))) %>%   
+ group_by(country,year,Decile,Coverage,income_concept) %>% 
+ mutate(value=sum(value)) %>% 
+ ungroup() %>% 
+ rename(value = value) %>% 
+ select(country,year,Decile,value,Coverage,income_concept) %>%
+ mutate(value= value*100,year=as.integer(year),source=paste0("PovCal"),
+        income_concept= if_else(income_concept =="Income","Income (net)",income_concept)) %>%
+ rename(areacovr = Coverage,Category= Decile) %>%   
+ distinct()->PovCal_Clean
+
+
+WIDER_data_povcal %>% 
+  bind_rows(PovCal_Clean)->Joined_Pov_data
+
+g<- ggplot(data= Joined_Pov_data %>% filter(country %in% c("Nigeria","China","India")),aes(x=year,y=value,color=Category,linetype=source))+
+    geom_line(size=1.2,alpha=0.6)+
+    facet_wrap(~country+areacovr+income_concept)+
+    ggtitle("Comparison of PovCal with PovCal WIDER for China ,Nigeria and India")+
+    ylab("Share of income (percent of total income)") 
+
+
+g + scheme_basic
+
+
+
+
+```
+
+## WIDER data
+
+### Figure 19: Distribution values (by quintile) from the aggregated WIDER dataset for selected countries
+
+```{r,fig.height=10,fig.width=10}
+WIDER %>% 
+ gather("Decile","value","d1":"d10") %>% 
+  select(country,year,Decile,value,scale,resource,source,areacovr,source_comments, source_detailed,population,rural_pop,urban_pop,survey,areacovr_detailed) %>% 
+  distinct() %>% 
+  filter(scale=="Per capita", resource %in% c("Income (net)", "Consumption")) %>% 
+  mutate(population = ifelse(areacovr == "Rural", rural_pop, 
+                              if_else(areacovr == "Urban", urban_pop,population))) %>% 
+  mutate(source= if_else(grepl("Povcal",source_comments),"PovCal",source)) %>%
+  mutate(source= if_else(grepl("LIS",source),"Luxembourg Income Study",source)) %>%
+  mutate(source= if_else(grepl("Luxembourg Income Study",source),"LIS",source)) %>% 
+  rename(income_concept= resource, Category= Decile) %>% 
+  #Get total by quintiles
+  group_by(country,year,Category,income_concept,source,source_comments,source_detailed,areacovr,survey,areacovr_detailed) %>% 
+  mutate(value=sum(value)) %>% 
+  ungroup() %>% 
+  na.omit() %>% 
+  select(country,year,Category,income_concept,source,source_comments,source_detailed,areacovr,value,population,survey,areacovr_detailed) %>% 
+  distinct() %>% 
+  #Aggregate by scales
+  group_by(country,year,Category,income_concept,source,source_comments,source_detailed,survey) %>%
+  mutate(value=sum(population*value)/sum(population)) %>% 
+  ungroup() %>% 
+  select(country,year,Category,income_concept,value,source,source_comments,source_detailed,population) %>% 
+  distinct() %>% 
+  na.omit() %>% 
+  group_by(country,year,Category,income_concept) %>% 
+  mutate(value=sum(population*value)/sum(population)) %>%
+  select(country,year,Category,income_concept,value) %>% 
+  distinct() %>% 
+  na.omit()->Wider_aggregated_source
+
+Wider_aggregated_source %>% 
+  group_by(country,year,income_concept) %>% 
+  mutate(value = sum(value)) %>% 
+  ungroup() %>% 
+  select(country,year,income_concept,value) %>% 
+  distinct() %>% 
+  mutate(ref = paste0(country,year,income_concept)) %>% 
+  filter(value < 99.5 | value > 100.6) ->test_data
+
+Wider_aggregated_source %>% 
+  mutate(ref= paste0(country,year,income_concept)) %>% 
+  filter(ref %notin% c(unique(test_data$ref)))->Wider_aggregated_source
+
+
+      
+
+g <- ggplot(data=Wider_aggregated_source %>% filter(income_concept %in% c("Income (net)","Consumption","Income/Consumption"),country %in% c(countries,"India","Mexico")) %>% na.omit() ,aes(x=year,y=value,color=Category,linetype=income_concept))+
+  geom_line(size=1.2)+
+facet_wrap(~country)+
+  ggtitle("Distributions by income concepts, country in aggregated WIDER dataset")+
+    ylab("Share of income (percent of total income)") 
+
+g + scheme_basic
+
+```
+
+```{r,fig.height=10,fig.width=10}
+
+WIDER %>%  select(country, year, incomegroup) %>% 
+           distinct()->income_groupings 
+
+WIDER %>% 
+ gather("Decile","value","d1":"d10") %>% 
+  select(country,year,Decile,value,scale,resource,source,areacovr,source_comments) %>% 
+  distinct() %>% 
+  filter(scale=="Per capita") %>% 
+  #mutate(resource = if_else(grepl("Povcal",source_comments),"Income/Consumption",resource)) %>% 
+  mutate(source= if_else(grepl("Povcal",source_comments),"PovCal",source)) %>%
+  mutate(source= if_else(grepl("LIS",source),"Luxembourg Income Study",source)) %>% 
+  rename(income_concept= resource, Category= Decile) %>% 
+  group_by(country,year,Category,income_concept,source,areacovr) %>% 
+  mutate(value=sum(value)) %>% 
+  ungroup() %>% 
+  select(country,year,Category,income_concept,source,value,areacovr) %>% 
+  
+  
+  
+  distinct() %>% 
+  mutate(source= paste0(source, " WIDER")) %>% 
+  spread(income_concept,value) %>% 
+  left_join(income_groupings, by = c("country","year")) %>% 
+  select(country,year,`Income (net)`,Consumption,incomegroup,Category) %>% 
+  na.omit()->Wider_for_plot
+
+
+Wider_aggregated_source %>% 
+  select(-ref) %>% 
+  spread(income_concept,value) %>% 
+  left_join(income_groupings, by = c("country","year")) %>% 
+  select(country,year,`Income (net)`,Consumption,incomegroup,Category) %>% 
+  na.omit()->Wider_for_plot
+   
+
+Wider_for_plot <- as.data.table(Wider_for_plot)
+
+Wider_for_plot[,list(intercept=coef(lm(`Income (net)` ~ Consumption))[1], coef=coef(lm(`Income (net)` ~ Consumption))[2]),by=Category]->coeffs
+
+
+Wider_for_plot %>% 
+  left_join(coeffs, by= c("Category")) %>% 
+  mutate(imputed_income_share = (Consumption *coef)+intercept) %>%
+  mutate(share_of_richer_pop = if_else(Category== "q1",0.8,
+                                if_else(Category== "q2", 0.6,
+                                if_else(Category== "q3", 0.4,
+                                if_else(Category== "q4", 0.2,0))))                            ) %>% 
+  mutate(score = (`Income (net)`/100) *(0.2+ (2*share_of_richer_pop))) %>% 
+  mutate(score_imputed = (imputed_income_share/100) *(0.2+ (2*share_of_richer_pop))) %>% 
+  group_by(country,year,incomegroup) %>% 
+  mutate(gini= 1- sum(score),
+         gini_imputed = 1 - sum(score_imputed)) %>% 
+  ungroup() %>% 
+  select(country, year, gini, gini_imputed, incomegroup) %>%
+  distinct() %>% 
+  mutate(error= (gini - gini_imputed)) ->Wider_for_plot
+
+
+g <- ggplot(data=Wider_for_plot, aes(Wider_for_plot$error))+
+     geom_histogram(aes(fill=incomegroup),position = "stack")+
+    ggtitle("Distribution of error in income GINI values from WIDER")+
+    ylab("Count")+
+    xlab("Error (Actual GINI - Predicted GINI)")
+
+g+scheme_basic
+
+```
+
+### Figure 13: Comparison of distribution values (% of total income) between the 2 income concepts by quintile where the color represents income level of the country. Note : 140 observations for high income countries, 83 observations for upper middle income countries, 34 observations for lower middle, low income countries. 
+
+
+```{r,fig.height=10,fig.width=10}
+
+WIDER %>%  select(country, year, incomegroup) %>% 
+           distinct()->income_groupings 
+
+Wider_aggregated_source %>%  filter(income_concept %in% c("Income (net)","Consumption")) %>% 
+  left_join(income_groupings, by =c("country","year")) %>% ungroup()->Wider_for_plot
+
+Wider_for_plot %>%  filter( income_concept == "Income (net)") %>% 
+                    rename(`Income (net)` = value) %>% 
+                     select(-ref,-income_concept)->income_data
+
+Wider_for_plot %>%  filter( income_concept == "Consumption") %>% 
+                    rename(Consumption = value) %>% 
+                    select(-ref,-income_concept) ->cons_data
+
+cons_data %>% 
+  left_join(income_data, by = c("country","year","incomegroup","Category")) %>% 
+  na.omit()->Wider_comp_data
+
+
+g <- ggplot(data=Wider_comp_data, aes(x=`Income (net)`,y=Consumption))+
+     geom_point(aes(color=incomegroup))+
+     stat_poly_eq(aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+               label.x.npc = "left",
+               formula = formula, parse = TRUE, size = 3)+
+    ggtitle("Comparison of Distribution values across countries, years from aggregated WIDER")+
+    labs(subtitle = paste0("n = 257 , Units are in percent (percent of total income)"))+
+    geom_abline(slope=1, color= "blue", linetype= "dashed")+
+    facet_wrap(~Category,scales="free")
+
+g
+
+```
+
+### Figure 14: Comparison of distribution values (% of total income) between the 2 income concepts by income groups where the color represents the quintile. Note : 140 observations for high income countries, 83 observations for upper middle income countries, 34 observations for lower middle, low income countries.   
+
+
+```{r,fig.height=10,fig.width=10}
+g <- ggplot(data=Wider_comp_data, aes(x=`Income (net)`,y=Consumption))+
+     geom_point(aes(color=Category))+
+     stat_poly_eq(aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+               label.x.npc = "left",
+               formula = formula, parse = TRUE, size = 3)+
+    ggtitle("Comparison of Distribution values across countries, years from aggregated WIDER")+
+    labs(subtitle = paste0("n = 257 , Units are in percent (percent of total income)"))+
+    geom_abline(slope=1, color= "blue", linetype= "dashed")+
+    facet_wrap(~incomegroup,scales="free")
+
+g
+
+```
+
+## Analysis of income concepts from aggregated data
+
+### Figure 15: Comparison of consumption distribution values with GDP per capita in thousand USD. Note: 159 observations for high income countries, 358 for upper middle income countries, 333 for lower middle income countries and 116 for low income countries 
+
+```{r,fig.height=10,fig.width=10}
+
+formula <- y ~ log(x)
+
+WIDER %>%  select(country, year, incomegroup) %>% 
+           distinct()->income_groupings 
+
+Wider_aggregated_source %>%  filter(income_concept %in% c("Consumption")) %>% 
+  left_join(income_groupings, by =c("country","year")) %>% ungroup()->Wider_for_plot
+
+Wider_for_plot %>%  filter( income_concept == "Income (net)") %>% 
+                    rename(`Income (net)` = value) %>% 
+                     select(-ref,-income_concept)->income_data
+
+Wider_for_plot %>%  filter( income_concept == "Consumption") %>% 
+                    rename(Consumption = value) %>% 
+                    select(-ref,-income_concept) ->cons_data
+
+
+WIDER %>%  select(country, year, gdp_ppp_pc_usd2011) %>% 
+           distinct() %>% 
+           na.omit() %>% 
+           group_by(country, year) %>% 
+           mutate(gdp_ppp_pc_usd2011 = mean(gdp_ppp_pc_usd2011)/1000) %>% 
+           distinct()->gdp_data
+
+cons_data %>% left_join(gdp_data, by= c("country","year"))->Wider_comp_data
+
+
+g <- ggplot(data=Wider_comp_data, aes(x=gdp_ppp_pc_usd2011,y=Consumption))+
+     geom_point(aes(color=incomegroup))+
+     stat_poly_eq(aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+               label.x.npc = "left",
+               formula = formula, parse = TRUE, size = 3)+
+    ggtitle("Comparison of Consumption distribution values with GDP per capita across countries, years from aggregated WIDER")+
+    labs(subtitle = paste0("n = 891 , Units are in percent (percent of total income)"))+
+     geom_smooth(method = "glm", formula = formula, se = FALSE, color= "blue", linetype = "dashed")+
+     facet_wrap(~Category,scales= "free_y")+
+     xlab("GDP per capita in thous USD")+
+     ylab("Share in total income (percent)")
+
+g + scheme_basic
+
+```
+
+
+### Figure 16: Comparison of consumption distribution values with GDP per capita in thousand USD. Note: 159 observations for high income countries, 358 for upper middle income countries, 333 for lower middle income countries and 116 for low income countries (Separate facets by income group and quintile)
+
+```{r,fig.height=10,fig.width=10}
+
+formula <- y ~ log(x)
+
+WIDER %>%  select(country, year, incomegroup) %>% 
+           distinct()->income_groupings 
+
+Wider_aggregated_source %>%  filter(income_concept %in% c("Consumption")) %>% 
+  left_join(income_groupings, by =c("country","year")) %>% ungroup()->Wider_for_plot
+
+Wider_for_plot %>%  filter( income_concept == "Income (net)") %>% 
+                    rename(`Income (net)` = value) %>% 
+                     select(-ref,-income_concept)->income_data
+
+Wider_for_plot %>%  filter( income_concept == "Consumption") %>% 
+                    rename(Consumption = value) %>% 
+                    select(-ref,-income_concept) ->cons_data
+
+
+WIDER %>%  select(country, year, gdp_ppp_pc_usd2011) %>% 
+           distinct() %>% 
+          na.omit() %>% 
+           group_by(country, year) %>% 
+           mutate(gdp_ppp_pc_usd2011 = mean(gdp_ppp_pc_usd2011)/1000) %>% 
+           distinct()->gdp_data
+
+cons_data %>% left_join(gdp_data, by= c("country","year"))->Wider_comp_data
+
+
+g <- ggplot(data=Wider_comp_data, aes(x=gdp_ppp_pc_usd2011,y=Consumption))+
+     geom_point(aes(color=incomegroup))+
+    ggtitle("Comparison of Consumption distribution values with GDP per capita across countries, years from aggregated WIDER")+
+    labs(subtitle = paste0("n = 891 , Units are in percent (percent of total income)"))+
+     geom_smooth(method = "glm",formula = "y ~ log(x)", color= "blue", linetype = "dashed")+
+     facet_grid(rows = vars(Category), cols= vars(incomegroup))+
+     xlab("GDP per capita in thous USD")+
+     ylab("Share in total income (percent)")+
+     stat_poly_eq(aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+               label.x.npc = "left",
+               formula = formula, parse = TRUE, size = 3)
+
+g + scheme_basic
+
+```
+
+### Figure 17: Comparison of net income distribution values with GDP per capita in thousand USD. Note: 159 observations for high income countries, 358 for upper middle income countries, 333 for lower middle income countries and 116 for low income countries 
+
+```{r,fig.height=10,fig.width=10}
+
+WIDER %>%  dplyr::select(country, year, incomegroup) %>% 
+           distinct()->income_groupings 
+
+Wider_aggregated_source %>%  filter(income_concept %in% c("Income (net)","Consumption")) %>% 
+  left_join(income_groupings, by =c("country","year")) %>% ungroup()->Wider_for_plot
+
+Wider_for_plot %>%  filter( income_concept == "Income (net)") %>% 
+                    rename(`Income (net)` = value) %>% 
+                     dplyr::select(-ref,-income_concept) %>% 
+                       mutate(id = paste0(country,year))->income_data
+
+Wider_for_plot %>%  filter( income_concept == "Consumption") %>% 
+                    rename(Consumption = value) %>% 
+                    left_join(coeffs, by= c("Category")) %>%
+                    mutate(`Income (net)` = (Consumption * coef)+intercept) %>% 
+                    dplyr::select(-ref,-income_concept,-Consumption,-intercept,-coef) %>% 
+                    mutate(id = paste0(country,year)) %>% 
+                    filter(id %notin% c(unique(income_data$id))) ->cons_data
+
+
+WIDER %>%  dplyr::select(country, year, gdp_ppp_pc_usd2011) %>% 
+           na.omit() %>% 
+           distinct() %>% 
+           na.omit() %>% 
+           group_by(country, year) %>% 
+           mutate(gdp_ppp_pc_usd2011 = mean(gdp_ppp_pc_usd2011)/1000) %>%
+           distinct()->gdp_data
+
+income_data %>% bind_rows(cons_data)%>%  left_join(gdp_data, by= c("country","year")) %>% filter(country %notin% c("Kosovo"))->Wider_comp_data
+
+Wider_comp_data %>% 
+  select(incomegroup,year,gdp_ppp_pc_usd2011) %>% 
+  na.omit() %>% 
+  group_by(incomegroup,year) %>% 
+  mutate(avg_gdp = mean(gdp_ppp_pc_usd2011)) %>% 
+  ungroup() %>% 
+  select(incomegroup,year,avg_gdp) %>% 
+  distinct()->avg_gdp_data
+
+Wider_comp_data %>% 
+  left_join(avg_gdp_data, by= c("incomegroup","year")) %>% 
+  mutate(gdp_ppp_pc_usd2011= if_else(is.na(gdp_ppp_pc_usd2011), avg_gdp, gdp_ppp_pc_usd2011)) %>% 
+  mutate(loggdp = log(gdp_ppp_pc_usd2011)) %>% 
+  left_join(pop_data, by = c("country","year"))->Wider_comp_data
+
+Wider_comp_data <- as.data.table(Wider_comp_data)
+
+Wider_comp_data %>% 
+  left_join(TFP_data, by= c("country","year")) %>% 
+  left_join(Education_data, by= c("country","year")) %>% 
+  na.omit() %>% 
+  mutate(loggdp = log(gdp_ppp_pc_usd2011))->Wider_comp_rao
+
+Wider_comp_rao[,list(intercept=coef(lm(`Income (net)` ~ loggdp))[1],
+coef_gdp=coef(lm(`Income (net)` ~ loggdp))[2]),by=Category]->coeffs_rao_gdp
+
+Wider_comp_rao[,list(intercept=coef(lm(`Income (net)` ~ TFP_yoy+Primary_prct+Secondary_prct+Tertiary_prct+year,weights = population))[1], coef_tfp=coef(lm(`Income (net)` ~ TFP_yoy+Primary_prct+Secondary_prct+Tertiary_prct+year,weights = population))[2],
+coef_primary=coef(lm(`Income (net)` ~ TFP_yoy+Primary_prct+Secondary_prct+Tertiary_prct+year,weights = population))[3],                     coef_secondary=coef(lm(`Income (net)` ~ TFP_yoy+Primary_prct+Secondary_prct+Tertiary_prct+year,weights = population))[4],
+coef_tertiary=coef(lm(`Income (net)` ~ TFP_yoy+Primary_prct+Secondary_prct+Tertiary_prct+year,weights = population))[5],
+coef_year=coef(lm(`Income (net)` ~ TFP_yoy+Primary_prct+Secondary_prct+Tertiary_prct+year,weights = population))[6]),by=Category]->coeffs_rao_pop_weighted
+
+
+Wider_comp_rao[,list(intercept=coef(lm(`Income (net)` ~ TFP_yoy+Primary_prct+Secondary_prct+Tertiary_prct+year))[1], coef_tfp=coef(lm(`Income (net)` ~ TFP_yoy+Primary_prct+Secondary_prct+Tertiary_prct+year))[2],
+coef_primary=coef(lm(`Income (net)` ~ TFP_yoy+Primary_prct+Secondary_prct+Tertiary_prct+year))[3],                     coef_secondary=coef(lm(`Income (net)` ~ TFP_yoy+Primary_prct+Secondary_prct+Tertiary_prct+year))[4],
+coef_tertiary=coef(lm(`Income (net)` ~ TFP_yoy+Primary_prct+Secondary_prct+Tertiary_prct+year))[5],
+coef_year=coef(lm(`Income (net)` ~ TFP_yoy+Primary_prct+Secondary_prct+Tertiary_prct+year))[6]),by=Category]->coeffs_rao
+
+
+Wider_comp_data[,list(intercept=coef(lm(`Income (net)` ~ loggdp))[1], coef_gdp=coef(lm(`Income (net)` ~ loggdp))[2]),by=Category]->coeffs_gdp
+
+Wider_comp_data[,list(intercept=coef(lm(`Income (net)` ~ loggdp+year))[1], coef_gdp=coef(lm(`Income (net)` ~ loggdp+year))[2],coef_time=coef(lm(`Income (net)` ~ loggdp+year))[3]),by=Category]->coeffs_gdp_time
+
+g <- ggplot(data=Wider_comp_data, aes(x=gdp_ppp_pc_usd2011,y=`Income (net)`))+
+     geom_point(aes(color=incomegroup))+
+     stat_poly_eq(aes(label = paste(..rr.label.., sep = "~~~")), 
+               label.x.npc = "left",
+               formula = formula, parse = TRUE, size = 3)+
+    ggtitle("Comparison of net income distribution values with GDP per capita across countries, years from aggregated WIDER")+
+    labs(subtitle = paste0("n = 1934 , Units are in percent (percent of total income)"))+
+     geom_smooth(method = "lm", formula = "y ~ log(x)" ,se = FALSE, color= "blue", linetype = "dashed")+
+     facet_wrap(~Category,scales= "free_y")+
+     xlab("GDP per capita in thous USD")+
+     ylab("Share in total income (percent)")
+
+g + scheme_basic
+
+```
+```{r,fig.height=8,fig.width=11}
+
+Wider_comp_data %>% filter(year==2015, country %in% c("United States","China","India","South Africa","Norway","Slovenia")) %>% arrange(country, `Income (net)`)->temp_data
+
+
+g <- ggplot(data=temp_data, aes(x=reorder(Category,`Income (net)`),y=`Income (net)`,color= country,group=country))+
+     geom_point(size=2)+
+     geom_line(size=1)+
+    ggtitle("Net-income distributions (by quintile) in selected countries in 2015")+
+    labs(subtitle = "Data source: Aggregated WIDER dataset")+
+     xlab("Income quintile")+
+     ylab("Share in total income (percent)")+
+     scale_color_npg()
+
+g + scheme_basic
+```
+#Develop datasets for model fits
+```{r}
+Wider_comp_rao  %>% unique(by = c("country","year","Category","id")) %>% 
+  mutate(`Income (net)`= `Income (net)`/100 ) %>% 
+  compute_gini()->Wider_comp_rao
+
+
+Wider_comp_rao %>% 
+  group_by(country, Category) %>% 
+  mutate(lagged = lag(`Income (net)`)) %>% 
+  ungroup() %>% 
+  mutate(lagged = if_else(is.na(lagged),`Income (net)`,lagged))-> lagged_data 
+
+predictors <- c("logGDP", "Raoetal", "autoregressive","hybridrao","hybridlogGDP")
+fit <- c("linear", "logistic","tree")
+weight <- c("unweighted","pop_weighted")
+
+
+list_data <- c()
+i <- 1
+for (p in predictors){
+    for (f in fit){
+      for (w in weight){
+  tmp <- lagged_data %>% mutate(model = p, fit = f, weight = w, model_id = paste0(p,f,w))
+  
+  list_data[[i]] <- tmp
+  
+  i <- i +1
+  
+  
+}}}
+
+data <- rbindlist(list_data)
+
+```
+
+
+#Develop model fits
+```{r}
+stats_eq <- read.csv("C:/Users/nara836/Documents/stats_equations.csv",stringsAsFactors = FALSE)
+
+rm(i)
+i <- 1
+model_list <- c()
+predicted_values <- c()
+
+data_wo_tree <- data %>% filter(fit != "tree") 
+for (m in unique(data_wo_tree$model_id) ){
+  
+  print(m)
+  data %>% left_join(stats_eq, by= c("model_id")) %>% filter(model_id == m) %>% filter(Category =="q5") %>% 
+    mutate(`Income (net)`=`Income (net)`/100,
+           lagged = lagged/100)->tmp
+  
+  tmp <- as.data.frame(tmp)
+  model <- NULL
+  df_fitted <- NULL
+  df <- NULL
+  func <- unique(tmp$eq)
+    
+  model <- eval(parse(text=unique(tmp$eq)))
+  summary(model)
+  
+  
+  
+  
+  df_fitted <- tmp
+  
+  model_fit <- unique(tmp$fit)
+  
+  if (model_fit == "linear"){
+  
+  df_fitted$predicted <- (model$fitted.values)
+  df_fitted$model_id<- m 
+  df_fitted$y_vals <- tmp$`Income (net)`
+  df_fitted$residuals <- model$residuals
+  df <- as.data.frame(model$residuals)
+  df$sq_resid<- df[1]^2
+  RSS_sum <- sum(df$sq_resid)
+  
+  tmp %>% mutate(RSS = RSS_sum ) %>% 
+    select(model, fit, weight, model_id, RSS) %>% distinct()->t
+  }else{
+    
+   predicted <- predict(model,tmp, type="response")  
+   
+   df_fitted$predicted <- predicted
+   df_fitted$model_id<- m
+   df_fitted$y_vals <- tmp$`Income (net)`
+   df_fitted %>% mutate(residuals = predicted - y_vals)->df_fitted 
+  
+   df <- as.data.frame(df_fitted$residuals)
+  df$sq_resid<- df[1]^2
+  RSS_sum <- sum(df$sq_resid)
+  
+  tmp %>% mutate(RSS = RSS_sum ) %>% 
+    select(model, fit, weight, model_id, RSS) %>% distinct()->t
+    
+    
+  }
+  
+  model_list[[i]] <- t
+  predicted_values[[i]] <- df_fitted
+  i <- i+1
+  
+}
+
+model_fit_data <- rbindlist(model_list) %>% distinct()
+predicted_data <- rbindlist(predicted_values) %>% distinct()
+
+```
+
+```{r}
+stats_eq_tree <- read.csv("C:/Users/nara836/Documents/stats_equations_tree.csv",stringsAsFactors = FALSE)
+
+rm(i)
+i <- 1
+model_list <- c()
+predicted_values <- c()
+
+data_tree <- data %>%  filter(fit =="tree") 
+
+for (m in unique(data_tree$model_id) ){
+  
+  print(m)
+  data_tree %>% left_join(stats_eq_tree, by= c("model_id")) %>% filter(model_id == m) %>% filter(Category =="q5") %>% 
+    mutate(`Income (net)`=`Income (net)`/100,
+           lagged = lagged/100)->tmp
+  
+  tmp <- as.data.frame(tmp)
+  model <- NULL
+  df_fitted <- NULL
+  df <- NULL
+  func <- unique(tmp$eq)
+    
+  model <- eval(parse(text=unique(tmp$eq)))
+  #summary(model)
+  
+  opt <- which.min(model$cptable[,"xerror"])
+  
+  cp <- model$cptable[opt, "CP"]
+  
+  pruned_model <- prune(model,cp)
+  #pruned_model <- model
+  
+  df_fitted <- tmp
+  
+  
+  
+  
+    
+   predicted <- predict(pruned_model,tmp, type="vector")  
+   
+   df_fitted$predicted <- predicted
+   df_fitted$model_id<- m
+   df_fitted$y_vals <- tmp$`Income (net)`
+   df_fitted %>% mutate(residuals = predicted - y_vals)->df_fitted 
+  
+   df <- as.data.frame(df_fitted$residuals)
+  df$sq_resid<- df[1]^2
+  RSS_sum <- sum(df$sq_resid)
+  
+  tmp %>% mutate(RSS = RSS_sum ) %>% 
+    select(model, fit, weight, model_id, RSS) %>% distinct()->t
+    
+    
+  
+  
+  model_list[[i]] <- t
+  predicted_values[[i]] <- df_fitted
+  i <- i+1
+  
+}
+
+model_fit_data_tree <- rbindlist(model_list) %>% distinct()
+predicted_data_tree <- rbindlist(predicted_values) %>% distinct()
+```
+
+```{r}
+
+data %>% mutate(gini_group= if_else(gini>=0.47,"High GINI",
+                                    if_else(gini>=0.30, "Medium GINI",
+                                            "Low GINI")))->grouped_gini_data
+
+stats_eq <- read.csv("C:/Users/nara836/Documents/stats_equations.csv",stringsAsFactors = FALSE)
+
+rm(i)
+i <- 1
+model_list <- c()
+predicted_values <- c()
+
+data_wo_tree <- grouped_gini_data %>% filter(fit != "tree") 
+for (m in unique(data_wo_tree$model_id) ){
+  for (g in unique(data_wo_tree$gini_group)){
+  
+  print(m)
+  data_wo_tree %>% inner_join(stats_eq, by= c("model_id")) %>% filter(model_id == m) %>% filter(Category =="q5",gini_group==g) %>% 
+    mutate(`Income (net)`=`Income (net)`/100,
+           lagged = lagged/100)->tmp
+  
+  
+  model <- NULL
+  df_fitted <- NULL
+  df <- NULL
+  func <- unique(tmp$eq)
+  
+  
+    #print(g)
+    tmp <- as.data.frame(tmp) 
+    model <- eval(parse(text=unique(tmp$eq)))
+  summary(model)
+  
+  
+  
+  
+  df_fitted <- tmp
+  
+  model_fit <- unique(tmp$fit)
+  
+  if (model_fit == "linear"){
+  
+  df_fitted$predicted <- (model$fitted.values)
+  df_fitted$model_id<- m 
+  df_fitted$y_vals <- tmp$`Income (net)`
+  df_fitted$residuals <- model$residuals
+  df <- as.data.frame(model$residuals)
+  df$sq_resid<- df[1]^2
+  RSS_sum <- sum(df$sq_resid)
+  
+  tmp %>% mutate(RSS = RSS_sum , group= g) %>% 
+    select(model, fit, weight, model_id, RSS, group) %>% distinct()->t
+  }else{
+    
+   predicted <- predict(model,tmp, type="response")  
+   
+   df_fitted$predicted <- predicted
+   df_fitted$model_id<- m
+   df_fitted$y_vals <- tmp$`Income (net)`
+   df_fitted %>% mutate(residuals = predicted - y_vals)->df_fitted 
+  
+   df <- as.data.frame(df_fitted$residuals)
+  df$sq_resid<- df[1]^2
+  RSS_sum <- sum(df$sq_resid)
+  
+  tmp %>% mutate(RSS = RSS_sum , group =g) %>% 
+    select(model, fit, weight, model_id, RSS, group) %>% distinct()->t
+  
+  
+    
+  }
+      
+  model_list[[i]] <- t
+  predicted_values[[i]] <- df_fitted
+  i <- i+1
+    
+  }
+  
+  
+  
+}
+
+model_fit_data_gini_groups <- rbindlist(model_list) %>% distinct() %>% group_by(model,fit,weight,model_id) %>% mutate(RSS=sum(RSS)) %>% ungroup() %>% select(-group) %>% mutate()
+predicted_data_gini_groups <- rbindlist(predicted_values) %>% distinct() %>% select(-gini_group) %>% mutate(model=paste0("gini_",model))
+
+
+
+```
+
+
+```{r,fig.height=6,fig.width=8}
+
+predicted_data %>%bind_rows(predicted_data_gini_groups) %>%  
+  mutate(y_vals = y_vals *100, predicted = predicted *100) %>% filter(model %in% c("Raoetal","gini_Raoetal","autoregressive"),weight=="unweighted")->data_for_plot
+
+g <- ggplot(data = data_for_plot, aes(x=y_vals, y=predicted, color=model,shape=fit)) + 
+     geom_point(alpha=0.6)+
+     facet_grid(rows=vars(weight),cols=vars(fit))+
+     ggtitle("Comparing Q5 distribution values under different models (actual vs predicted)")+
+     xlab("Actual shares  (percent of total income)")+
+     ylab("Predicted shares (percent of total income)")+
+    geom_abline(slope=1, color= "black", linetype = "dashed")+
+    scale_color_npg()
+
+g+scheme_basic
+```
+
+```{r}
+Wider_comp_rao %>% mutate(`Income (net)`= `Income (net)`) %>% select(-gini) %>% compute_gini() %>% group_by(country) %>% mutate(mean_gini = first(gini)) %>% ungroup() %>%  select(country, year, Category, `Income (net)`) %>% 
+                 spread(Category,`Income (net)`) %>% mutate(id= paste0(country,year)) %>%  arrange(id) %>% na.omit() ->pc_raw
+
+pc_results <- prcomp(pc_raw[3:12])
+
+pc_data <- as.data.frame(pc_results$x)
+
+pc_loadings <- (pc_results$rotation) 
+
+center <- pc_results$center
+
+Wider_comp_rao %>% mutate(`Income (net)`= `Income (net)`) %>% select(-gini) %>% compute_gini() %>% group_by(country) %>% mutate(mean_gini = first(gini)) %>% ungroup() %>% spread(Category,`Income (net)`) %>% select(-d1,-d2,-d3,-d4,-d5,-d6,-d7,-d8,-d9,-d10) %>% distinct() %>% arrange(id) %>%filter(country != "Suriname")->Wider_comp_PC
+
+Wider_comp_PC$Component1 <- pc_data$PC1
+Wider_comp_PC$Component2 <- pc_data$PC2
+
+
+Wider_comp_PC %>% arrange(id)%>% group_by(country) %>%  mutate(lagged1= lag(Component1),
+                         lagged2= lag(Component1,2), gdppcap = gdp_ppp_pc_usd2011 ) %>% ungroup() %>%na.omit()->Wider_comp_PC
+
+
+Wider_comp_PC %>%  
+  mutate(obs =1) %>% 
+  group_by(country) %>% 
+  mutate(obs = sum(obs)) %>% 
+  ungroup() %>% 
+  filter(obs >=2) %>% 
+  mutate(Un_educated = if_else(Un_educated <0,0,Un_educated))->Wider_Comp_PC_test
+
+
+
+modelPCA1 <- lm(Component1~ Secondary_prct+Tertiary_prct+ TFP_yoy+year+Primary_prct, data= Wider_Comp_PC_test)
+modelPCA2 <- lm(Component2 ~ lagged2, data=Wider_comp_PC)
+
+fitted_pca1 <- (Wider_comp_PC$gdp_ppp_pc_usd2011*-2.084e-04)+
+               (Wider_comp_PC$lagged1*6.319e-01)+
+                (Wider_comp_PC$lagged2*3.062e-01)+
+                4.863e-03
+fitted_pca2 <- modelPCA2$fitted.values
+
+Wider_comp_PC$Component1_Pred <- fitted_pca1
+Wider_comp_PC$Component1_act <- Wider_comp_PC$Component1
+
+Wider_comp_PC %>% rename(gini_act= gini) %>% mutate(d1= (fitted_pca1* pc_loadings[1,1])+center[1],
+                         d2= (fitted_pca1* pc_loadings[3,1])+center[3],
+                         d3= (fitted_pca1* pc_loadings[4,1])+center[4],
+                         d4= (fitted_pca1* pc_loadings[5,1])+center[5],
+                         d5= (fitted_pca1* pc_loadings[6,1])+center[6],
+                         d6= (fitted_pca1* pc_loadings[7,1])+center[7],
+                         d7= (fitted_pca1* pc_loadings[8,1])+center[8],
+                         d8= (fitted_pca1* pc_loadings[9,1])+center[9],
+                         d9= (fitted_pca1* pc_loadings[10,1])+center[10],
+                         d10= (fitted_pca1* pc_loadings[2,1])+center[2]) %>% gather("Category","Income (net)","d1":"d10") %>% compute_gini() %>% filter(year > 2004) ->Wider_comp_PC_pred
+
+Wider_comp_PC_pred %>% select(country, year, gini, gini_act) %>% distinct() %>% mutate(model="AR(1)") %>% 
+  mutate(sum_of_squared_error = sum((gini-gini_act)^2)/nrow(Wider_comp_PC_pred))->gini_data
+
+
+g <- ggplot(data=gini_data, aes(x=gini_act,y=gini))+
+     geom_point()+
+     xlab("Actual GINI values")+
+     ylab("Predicted GINI values")+
+     ggtitle("Actual vs Predicted GINI using PCA analysis")+
+     labs(subtitle = "Model for prediction: AR(1)")
+
+g+ scheme_basic
+           
+
+```
+```{r}
+g <- ggplot(data= Wider_comp_PC, aes(x= gdp_ppp_pc_usd2011, y=Component1) )+
+     geom_point()
+
+g + scheme_basic
+```
+
+```{r}
+Wider_comp_PC_pred %>%  select(country, year, Component1) %>% distinct()->components
+
+g <- ggplot(data= components %>% filter(country %in% c("United States", "South Africa", "Slovenia")), aes(x= year, y= Component1))+
+     geom_line(color= "light blue")+
+     geom_point()+
+     facet_wrap(~country, scales = "free_y")+
+     ylab("Component Values")+
+     ggtitle("Component values accross selected countries")
+
+g+ scheme_basic
+
+
+```
+```{r}
+Wider_comp_PC_pred %>%  select(country, year, Category, `Income (net)`) %>% distinct()->income
+
+g <- ggplot(data= income %>% filter(country %in% c("United States", "South Africa", "Slovenia")), aes(x= year, y= `Income (net)`))+
+     geom_line(aes(color= Category))+
+     geom_point(aes(color= Category))+
+     facet_wrap(~country, scales = "free_y")+
+     ylab("Quintile values")+
+     ggtitle("Quintile values accross selected countries (Calculated from components)")
+
+g+ scheme_basic
+```
+
+```{r}
+Wider_comp_rao %>% select(country, year, Category, `Income (net)`) %>%
+                 mutate(`Income (net)` = `Income (net)`/100) %>% 
+                 spread(Category,`Income (net)`) %>% mutate(id= paste0(country,year)) %>% arrange(id)->pc_raw
+
+pc_results <- prcomp(pc_raw[3:7])
+
+pc_data <- as.data.frame(pc_results$x)
+
+pc_loadings <- (pc_results$rotation) 
+
+center <- pc_results$center
+
+Wider_comp_rao %>%  mutate(`Income (net)` = `Income (net)`/100) %>% select(-gini) %>% compute_gini() %>% group_by(country) %>% mutate(mean_gini = first(gini)) %>% ungroup() %>%spread(Category,`Income (net)`) %>% select(-q1,-q2,-q3,-q4,-q5) %>% distinct() %>% arrange(id)->Wider_comp_PC
+
+
+
+Wider_comp_PC$Component1 <- pc_data$PC1
+Wider_comp_PC$Component2 <- pc_data$PC2
+
+
+Wider_comp_PC %>% arrange(id)%>% group_by(country) %>%  mutate(lagged1= lag(Component1),
+                         lagged2= lag(Component2)) %>% ungroup() %>%na.omit()->Wider_comp_PC
+
+modelPCA1 <- lm(Component1 ~ Primary_prct+Secondary_prct+Tertiary_prct+lagged1+log(gdp_ppp_pc_usd2011), data=Wider_comp_PC)
+modelPCA2 <- lm(Component2 ~ TFP_yoy+Primary_prct+Secondary_prct+Tertiary_prct+year+mean_gini, data=Wider_comp_PC,weights = population)
+
+fitted_pca1 <- modelPCA1$fitted.values
+fitted_pca2 <- modelPCA2$fitted.values
+
+Wider_comp_PC$Component1_Pred <- fitted_pca1
+Wider_comp_PC$Component2_Pred <- fitted_pca2
+Wider_comp_PC$Component1_act <- Wider_comp_PC$Component1
+
+Wider_comp_PC %>% rename(gini_act= gini) %>% mutate(q1= (fitted_pca1* pc_loadings[1,1])+center[1],
+                         q2= (fitted_pca1* pc_loadings[2,1])+center[2],
+                         q3= (fitted_pca1* pc_loadings[3,1])+center[3],
+                         q4= (fitted_pca1* pc_loadings[4,1])+center[4],
+                         q5= (fitted_pca1* pc_loadings[5,1])+center[5]) %>% gather("Category","Income (net)","q1":"q5") %>% compute_gini() ->Wider_comp_PC_pred
+
+Wider_comp_PC_pred %>% select(country, year, gini, gini_act) %>% distinct() %>% mutate(model="Rao et al.")->gini_data_rao
+
+
+g <- ggplot(data=gini_data_rao, aes(x=gini_act,y=gini))+
+     geom_point()+
+     xlab("Actual GINI values")+
+     ylab("Predicted GINI values")+
+     ggtitle("Actual vs Predicted GINI using PCA analysis")+
+     labs(subtitle = "Model for prediction: Rao et al.")
+
+g+ scheme_basic
+
+```
+```{r}
+g <- ggplot(data= Wider_comp_PC, aes(x=gini, y =Component1_act))+
+     geom_point()
+
+g+ scheme_basic
+
+model_gini <- lm(Component1_act~ gini, data=Wider_comp_PC)
+```
+
+```{r}
+Wider_comp_PC %>% select(country, year, TFP_yoy, Component1) %>% 
+                  arrange(country,year) %>%
+  mutate(year_char = 1) %>% 
+                  group_by(country) %>% 
+                  mutate(count_year= last(year)- first(year),
+                         TFP_growth = ((last(TFP_yoy)- first(TFP_yoy))/first(TFP_yoy))/count_year,
+                         Inequality_growth = ((last(Component1)- first(Component1))/first(Component1))/count_year,
+                         count = sum(year_char)) %>% 
+  ungroup() %>% na.omit() %>% select(country, TFP_growth, Inequality_growth,count) %>% distinct() %>% filter(country %notin% c("Azerbaijan","Syria","Guinea-Bissau"),count > 5)->tmp
+
+model <- lm(Inequality_growth ~ (TFP_growth), data= tmp)
+
+g <- ggplot(data= Wider_comp_PC, aes(x= TFP_yoy, y = Component1_act))+
+     geom_point()
+
+g+ scheme_basic
+```
+
+
+
+```{r}
+Wider_comp_rao %>% select(country, year, Category, `Income (net)`,gini) %>% 
+                 mutate(`Income (net)`= `Income (net)`/100) %>% compute_gini() %>% 
+                 spread(Category,`Income (net)`) %>% mutate(id= paste0(country,year)) %>% arrange(id) %>% mutate(gini_group= if_else(gini>=0.47,"High GINI",
+                                    if_else(gini>=0.30, "Medium GINI",
+                                            "Low GINI")))->pc_raw
+
+pc_results <- prcomp(pc_raw[4:8])
+
+pc_data <- as.data.frame(pc_results$x)
+
+pc_loadings <- (pc_results$rotation) 
+
+center <- pc_results$center
+
+Wider_comp_rao %>% mutate(`Income (net)`= `Income (net)`/100 ) %>% compute_gini() %>% spread(Category,`Income (net)`) %>% select(-q1,-q2,-q3,-q4,-q5) %>% distinct() %>% arrange(id) %>% mutate(gini_group= if_else(gini>=0.47,"High GINI",
+                                    if_else(gini>=0.30, "Medium GINI",
+                                            "Low GINI")))->Wider_comp_PC
+
+Wider_comp_PC$Component1 <- pc_data$PC1
+Wider_comp_PC$Component2 <- pc_data$PC2
+
+
+Wider_comp_PC %>% arrange(id)%>% group_by(country) %>%  mutate(lagged1= lag(Component1),
+                         lagged2= lag(Component2)) %>% ungroup() %>% na.omit() ->Wider_comp_PC
+
+model_output <- c()
+
+i <- 1
+for (g in unique(Wider_comp_PC$gini_group)){
+
+Wider_comp_PC %>% filter(gini_group == g)->tmp
+  
+print(nrow(tmp))  
+
+modelPCA1 <- lm(Component1 ~ TFP_yoy+Primary_prct+Secondary_prct+Tertiary_prct+year, data=tmp)
+modelPCA2 <- lm(Component2 ~ log(gdp_ppp_pc_usd2011), data=tmp)
+
+fitted_pca1 <- modelPCA1$fitted.values
+fitted_pca2 <- modelPCA2$fitted.values
+
+tmp$Component1_Pred <- fitted_pca1
+tmp$Component2_Pred <- fitted_pca2
+tmp$Component1_act <- tmp$Component1
+
+tmp %>% rename(gini_act= gini) %>% mutate(q1= (fitted_pca1* pc_loadings[1,1])+center[1],
+                         q2= (fitted_pca1* pc_loadings[2,1])+center[2],
+                         q3= (fitted_pca1* pc_loadings[3,1])+center[3],
+                         q4= (fitted_pca1* pc_loadings[4,1])+center[4],
+                         q5= (fitted_pca1* pc_loadings[5,1])+center[5]) %>% gather("Category","Income (net)","q1":"q5") %>% compute_gini() ->Wider_comp_PC_pred
+
+model_output[[i]]<- Wider_comp_PC_pred
+i <- i +1
+}
+
+
+gini_model_output <- rbindlist(model_output)
+
+gini_model_output %>% select(country, year, gini, gini_act) %>% distinct() %>% mutate(model= "GINI based Rao et al.")->gini_data_gini_groups
+
+```
+
+```{r}
+g <- ggplot(data=gini_data %>% bind_rows(gini_data_gini_groups,gini_data_rao), aes(x=gini_act,y=gini, color= model))+
+     geom_point()+
+     xlab("Actual GINI values")+
+     ylab("Predicted GINI values")+
+     ggtitle("Actual vs Predicted GINI")+
+     #labs(subtitle = "Model for prediction: AR(1)")+
+     facet_grid(~model)+
+    geom_abline(slope=1, color= "black", linetype = "dashed")
+    #xlim(0,0.7)+
+    #ylim(0,0.7)
+
+g+ scheme_basic
+```
+```{r}
+g <- ggplot(data=gini_data %>% bind_rows(gini_data_gini_groups,gini_data_rao) %>% filter(country %in% c("India","China","South Africa","United States","Slovenia")), aes(x=year,y=gini, color= model))+
+     geom_line(linetype="dashed",size=1.2)+
+     geom_line(data=gini_data %>% bind_rows(gini_data_gini_groups,gini_data_rao) %>% filter(country %in% c("India","China","South Africa","United States","Slovenia")), aes(x=year,y=gini_act), color= "grey",size=1.2)+
+     xlab("Year")+
+     ylab("GINI values")+
+     ggtitle("Actual vs Predicted GINI")+
+     labs(subtitle = "Grey line represents actual observations")+
+     facet_grid(~country)
+
+g+ scheme_basic
+```
+
+
+
+```{r,fig.height=10,fig.width=10}
+predicted_data %>% bind_rows(predicted_data_gini_groups) %>% 
+  mutate(y_vals = y_vals *100, predicted = predicted *100) %>% 
+  filter(fit %in% c("linear","tree"),model %in% c("Raoetal","gini_Raoetal","autoregressive"))->data_for_plot
+
+g <- ggplot(data = data_for_plot %>% filter(country %in% c("United States", "China","India", "Slovenia","South Africa")), aes(x=year, y=predicted, color=model)) + 
+     geom_line(size=1.2,linetype="dashed")+
+     geom_line(data= data_for_plot %>% filter(country %in% c("United States", "China","India", "Slovenia","South Africa")), aes(x=year, y=y_vals),color="black",, size=1.2,alpha=0.5)+
+     facet_grid(rows=vars(weight),cols = vars(country))+
+     ggtitle("Comparing Q5 distribution values under different models (actual vs predicted)")+
+     xlab("Year")+
+     ylab("Predicted and actual shares (percent of total income)")+
+     labs(subtitle = "Black line is actual data. Only comparing 'linear' models here")
+
+g+scheme_basic
+
+```
+```{r}
+
+rpart_model <- rpart(`Income (net)`~TFP_yoy+Primary_prct+Secondary_prct+Tertiary_prct+year+gini+loggdp,data=Wider_comp_rao %>% filter(Category=="q5"))
+
+
+
+```
+
+```{r}
+predicted_data %>% 
+  mutate(remaining_share= 1-predicted, actual=1- y_vals) %>% 
+  mutate(`Income (net)` = remaining_share) ->data_for_recursive
+
+rm(i)
+i <- 1
+model_list_remaining <- c()
+predicted_values_remaining <- c()
+for (m in unique(data$model_id) ){
+  
+  print(m)
+  data_for_recursive %>%  filter(model_id == m) ->tmp
+  
+  tmp <- as.data.frame(tmp)
+  model <- NULL
+  df_fitted <- NULL
+  df <- NULL
+  func <- unique(tmp$eq)
+    
+  model <- eval(parse(text=unique(tmp$eq)))
+  
+  
+  
+  
+  df_fitted <- tmp
+  
+  model_fit <- unique(tmp$fit)
+  
+  if (model_fit == "linear"){
+  
+  df_fitted$predicted <- (model$fitted.values)
+  df_fitted$model_id<- m 
+  df_fitted$y_vals <- tmp$actual
+   df_fitted %>% mutate(residuals = predicted - y_vals)->df_fitted
+  df <- as.data.frame(df_fitted$residuals)
+  df$sq_resid<- df[1]^2
+  RSS_sum <- sum(df$sq_resid)
+  
+  tmp %>% mutate(RSS = RSS_sum ) %>% 
+    select(model, fit, weight, model_id, RSS) %>% distinct()->t
+  }else{
+    
+   predicted <- predict(model,tmp, type="response")  
+   
+   df_fitted$predicted <- predicted
+   df_fitted$model_id<- m
+   df_fitted$y_vals <- tmp$actual
+   df_fitted %>% mutate(residuals = predicted - y_vals)->df_fitted 
+  
+   df <- as.data.frame(df_fitted$residuals)
+  df$sq_resid<- df[1]^2
+  RSS_sum <- sum(df$sq_resid)
+  
+  tmp %>% mutate(RSS = RSS_sum ) %>% 
+    select(model, fit, weight, model_id, RSS) %>% distinct()->t
+    
+    
+  }
+  
+  model_list_remaining[[i]] <- t
+  predicted_values_remaining[[i]] <- df_fitted
+  i <- i+1
+  
+}
+
+model_fit_data_remaining <- rbindlist(model_list_remaining) %>% distinct()
+predicted_values_remaining <- rbindlist(predicted_values_remaining) %>% distinct()
+
+
+```
+```{r,fig.height=10,fig.width=10}
+predicted_values_remaining %>% 
+  mutate(actual = actual *100, predicted = predicted *100)->data_for_plot
+
+g <- ggplot(data = data_for_plot, aes(x=actual, y=predicted, color=model,shape=fit)) + 
+     geom_point()+
+     facet_grid(rows=vars(weight),cols=vars(fit))+
+     ggtitle("Comparing remaining distribution (other than q5) values under different models (based on recursive approach)")+
+     xlab("Actual shares  (percent of total income)")+
+     ylab("Predicted shares (percent of total income)")+
+    geom_abline(slope=1, color= "black", linetype = "dashed")
+
+g+scheme_basic
+```
+
+
+```{r,fig.height=10,fig.width=10}
+g <- ggplot(data= Wider_comp_data, aes(x=Wider_comp_data$`Income (net)`))+
+     geom_histogram(aes(fill= incomegroup))+
+     facet_wrap(~Category, scales="free")
+     
+     
+
+
+g
+```
+
+```{r,fig.height=10,fig.width=10}
+WIDER %>%  dplyr::select(country, year, incomegroup) %>% 
+           distinct()->income_groupings 
+
+Wider_aggregated_source %>%  filter(income_concept %in% c("Income (net)")) %>% 
+  left_join(income_groupings, by =c("country","year")) %>% ungroup()->Wider_for_plot
+
+Wider_for_plot %>%  filter( income_concept == "Income (net)") %>% 
+                    rename(`Income (net)` = value) %>% 
+                     dplyr::select(-ref,-income_concept)->income_data
+
+
+
+
+WIDER %>%  dplyr::select(country, year, gdp_ppp_pc_usd2011) %>% 
+           distinct() %>% 
+           group_by(country, year) %>% 
+           mutate(gdp_ppp_pc_usd2011 = mean(gdp_ppp_pc_usd2011)/1000) %>% 
+           distinct()->gdp_data
+
+income_data %>% bind_rows(cons_data) %>%  left_join(gdp_data, by= c("country","year"))->Wider_comp_data
+
+
+g <- ggplot(data=Wider_comp_data, aes(x=gdp_ppp_pc_usd2011,y=`Income (net)`))+
+     geom_point(aes(color=Category))+
+     stat_poly_eq(aes(label = paste(..rr.label.., sep = "~~~")), 
+               label.x.npc = "left",
+               formula = formula, parse = TRUE, size = 3)+
+    ggtitle("Comparison of net income distribution values with GDP per capita across countries, years from aggregated WIDER")+
+    labs(subtitle = paste0("n = 1741 , Units are in percent (percent of total income)"))+
+     geom_smooth(method = "lm", formula = "y ~ log(x)" ,se = FALSE, color= "blue", linetype = "dashed")+
+     facet_wrap(~incomegroup+Category,scales="free")+
+     xlab("GDP per capita in thous USD")+
+     ylab("Share in total income (percent)")
+
+g + scheme_basic
+
+```
+
+```{r,fig.height=10,fig.width=10}
+g<-plotmeans(`Income (net)` ~ year, data = Wider_comp_data %>% filter(Category=="q5") %>% na.omit() %>% filter(year <2018),n.label=FALSE)
+
+
+```
+```{r}
+Wider_comp_data <- as.data.table(Wider_comp_data)
+library(plm)
+
+Wider_comp_data$log_gdp <- log(Wider_comp_data$gdp_ppp_pc_usd2011)
+
+Wider_comp_data[,list(coef=coef(lm(`Income (net)` ~ log_gdp+ factor(incomegroup)-1))[1], `High income`=coef(lm(`Income (net)` ~ gdp_ppp_pc_usd2011+ factor(incomegroup)-1))[2], `Low income`=coef(lm(`Income (net)` ~ gdp_ppp_pc_usd2011+ factor(incomegroup)-1))[3],`Lower middle income`=coef(lm(`Income (net)` ~ gdp_ppp_pc_usd2011+ factor(incomegroup)-1))[4],`Upper middle income`=coef(lm(`Income (net)` ~ gdp_ppp_pc_usd2011+ factor(incomegroup)-1))[5]),by=Category]->coeffs_FE
+
+coeffs_FE %>% 
+  gather("incomegroup","intercept","High income": "Upper middle income")->coeffs_FE
+
+```
+```{r}
+
+fixed.dum <-lm(`Income (net)` ~ log_gdp+ factor(incomegroup)-1, data = Wider_comp_data %>% filter(Category=="q5"))
+
+as.data.frame(fixed.dum$fitted.values) ->q5
+
+fixed.dum <-lm(`Income (net)` ~ log_gdp+ factor(incomegroup)-1, data = Wider_comp_data %>% filter(Category=="q4"))
+
+as.data.frame(fixed.dum$fitted.values) ->q4
+
+fixed.dum <-lm(`Income (net)` ~ log_gdp+ factor(incomegroup)-1, data = Wider_comp_data %>% filter(Category=="q3"))
+
+as.data.frame(fixed.dum$fitted.values) ->q3
+
+fixed.dum <-lm(`Income (net)` ~ log_gdp+ factor(incomegroup)-1, data = Wider_comp_data %>% filter(Category=="q2"))
+
+as.data.frame(fixed.dum$fitted.values) ->q2
+
+fixed.dum <-lm(`Income (net)` ~ log_gdp+year, data = Wider_comp_data %>% filter(Category=="q5"))
+summary(fixed.dum)
+as.data.frame(fixed.dum$fitted.values) ->q1
+
+
+```
+```{r,fig.height=10,fig.width=10}
+Wider_comp_data %>% 
+  na.omit() ->Wider_comp_data_na_omits
+
+
+
+  Wider_comp_data_na_omits %>%
+  left_join(coeffs_rao_gdp, by= c("Category")) %>% 
+  mutate(imputed_income_share = (loggdp*coef_gdp)+intercept) %>%   
+  select(-`Income (net)`,-coef_gdp,-intercept) %>% 
+  spread(Category,imputed_income_share) %>% 
+  mutate(q5= 100 -(q4+q1+q3+q2)) %>% 
+  gather("Category","imputed_income_share","q1":"q5") %>%
+  left_join(Wider_comp_data %>% select(country,year,Category,`Income (net)`) %>% na.omit(),by=c("country","year","Category")) %>% 
+  mutate(error= (`Income (net)`-imputed_income_share))->Error_data
+
+g <- ggplot(data=Error_data , aes(Error_data$error))+
+     geom_histogram(aes(fill=incomegroup),position = "stack")+
+    ggtitle("Distribution of error from income share calculation using logGDP as predictor")+
+    ylab("Count")+
+    xlab("Error (Actual income share - Predicted income share)")+
+    facet_wrap(~Category)
+
+g+scheme_basic
+    
+  
+```
+##RAO et al model
+
+```{r,fig.height=10,fig.width=10}
+Wider_comp_data %>% 
+  na.omit() ->Wider_comp_data_na_omits
+
+
+
+  Wider_comp_rao %>%
+  left_join(coeffs_rao_pop_weighted, by= c("Category")) %>% 
+  mutate(imputed_income_share = (TFP_yoy*coef_tfp)+(coef_primary*Primary_prct)+(coef_secondary*Secondary_prct)+(coef_tertiary*Tertiary_prct)+(year*coef_year)+intercept) %>%   
+  select(-`Income (net)`,-coef_tfp,-coef_year,-coef_primary,-coef_secondary,-coef_tertiary,-intercept) %>% 
+  spread(Category,imputed_income_share) %>% 
+  mutate(q3= 100 -(q5+q1+q4+q2)) %>% 
+  gather("Category","imputed_income_share","q1":"q5") %>%
+  left_join(Wider_comp_rao %>% select(country,year,Category,`Income (net)`) %>% na.omit(),by=c("country","year","Category")) %>% 
+  mutate(error= ((`Income (net)`-imputed_income_share)))->Error_data_rao_pop
+
+g <- ggplot(data=Error_data_rao , aes(Error_data_rao$error))+
+     geom_histogram(aes(fill=incomegroup),position = "stack")+
+    ggtitle("Distribution of error from income share calculation using Rao et al. model (pop weighted)")+
+    ylab("Count")+
+    xlab("Error (Actual income share - Predicted income share)")+
+    facet_wrap(~Category)
+
+g+scheme_basic
+    
+
+```
+
+```{r,fig.height=10,fig.width=10}
+Wider_comp_data %>% 
+  na.omit() ->Wider_comp_data_na_omits
+
+
+
+  Wider_comp_rao %>%
+  left_join(coeffs_rao_pop_weighted, by= c("Category")) %>% 
+  mutate(imputed_income_share = (TFP_yoy*coef_tfp)+(coef_primary*Primary_prct)+(coef_secondary*Secondary_prct)+(coef_tertiary*Tertiary_prct)+(year*coef_year)+intercept) %>%   
+  select(-`Income (net)`,-coef_tfp,-coef_year,-coef_primary,-coef_secondary,-coef_tertiary,-intercept) %>% 
+  spread(Category,imputed_income_share) %>% 
+  mutate(q3= 100 -(q5+q1+q4+q2)) %>% 
+  gather("Category","imputed_income_share","q1":"q5") %>%
+  left_join(Wider_comp_rao %>% select(country,year,Category,`Income (net)`) %>% na.omit(),by=c("country","year","Category")) %>% 
+  mutate(error= ((`Income (net)`-imputed_income_share)))->Error_data_rao
+
+g <- ggplot(data=Error_data_rao , aes(Error_data_rao$error))+
+     geom_histogram(aes(fill=incomegroup),position = "stack")+
+    ggtitle("Distribution of error from income share calculation using Rao et al. model")+
+    ylab("Count")+
+    xlab("Error (Actual income share - Predicted income share)")+
+    facet_wrap(~Category)
+
+g+scheme_basic
+```
+
+
+
+
+```{r,fig.height=10,fig.width=10}
+
+Error_data_rao %>% 
+  inner_join(Error_data %>% select(country, year, Category, imputed_income_share) %>% rename(gdp_share= imputed_income_share), by = c("country","year","Category")) %>% 
+  mutate(error = imputed_income_share - gdp_share)->tmp
+
+
+g <- ggplot(data=tmp , aes(tmp$error))+
+     geom_histogram(aes(fill=incomegroup),position = "stack")+
+    ggtitle("Distribution of error from income share calculation using Rao et al. model")+
+    ylab("Count")+
+    xlab("Error (income share from Rao et al. - income share from gdp model)")+
+    facet_wrap(~Category)
+
+g+scheme_basic
+
+
+```
+```{r,fig.height=10,fig.width=10}
+
+Error_data_rao %>% 
+  inner_join(Error_data %>% select(country, year, Category, imputed_income_share) %>% rename(gdp_share= imputed_income_share), by = c("country","year","Category")) %>% 
+  mutate(error = ((imputed_income_share - gdp_share)/gdp_share)*100)->tmp
+
+
+g <- ggplot(data=tmp , aes(tmp$error))+
+     geom_histogram(aes(fill=incomegroup),position = "stack")+
+    ggtitle("Distribution of percent error from income share calculation using Rao et al. model")+
+    ylab("Count")+
+    xlab("Error (income share from Rao et al. -income share from gdp model)")+
+    facet_wrap(~Category)
+
+g+scheme_basic
+```
+
+
+
+
+```{r,fig.height=10,fig.width=10}
+Wider_comp_data %>% 
+  na.omit() ->Wider_comp_data_na_omits
+
+
+
+  Wider_comp_data_na_omits %>%
+  left_join(coeffs_gdp_time, by= c("Category")) %>% 
+  mutate(imputed_income_share = (loggdp*coef_gdp)+(year*coef_time)+intercept) %>%   
+  select(-`Income (net)`,-coef_gdp,-intercept,-coef_time) %>% 
+  spread(Category,imputed_income_share) %>% 
+  mutate(q4= 100 -(q5+q1+q3+q2)) %>% 
+  gather("Category","imputed_income_share","q1":"q5") %>%
+  left_join(Wider_comp_data %>% select(country,year,Category,`Income (net)`) %>% na.omit(),by=c("country","year","Category")) %>% 
+  mutate(error= (`Income (net)`-imputed_income_share))->Error_data_time
+
+g <- ggplot(data=Error_data_time , aes(Error_data$error))+
+     geom_histogram(aes(fill=incomegroup),position = "stack")+
+    ggtitle("Distribution of error from income share calculation using logGDP and time as predictors")+
+    ylab("Count")+
+    xlab("Error (Actual income share - Predicted income share)")+
+    facet_wrap(~Category,scales = "free")
+
+g+scheme_basic
+    
+  
+```
+
+
+
+
+```{r,fig.height=10,fig.width=10}
+
+Error_data %>% 
+  distinct() %>% 
+mutate(share_of_richer_pop = if_else(Category== "q1",0.8,
+                                if_else(Category== "q2", 0.6,
+                                if_else(Category== "q3", 0.4,
+                                if_else(Category== "q4", 0.2,0))))                            ) %>% 
+  mutate(score = (`Income (net)`/100) *(0.2+ (2*share_of_richer_pop))) %>% 
+  mutate(score_imputed = (imputed_income_share/100) *(0.2+ (2*share_of_richer_pop))) %>% 
+  group_by(country,year,incomegroup) %>% 
+  mutate(gini= 1- sum(score),
+         gini_imputed = 1 - sum(score_imputed)) %>% 
+  ungroup() %>% 
+  select(country, year, gini, gini_imputed, incomegroup) %>%
+  distinct() %>% 
+  mutate(error= (gini - gini_imputed)) ->Wider_for_plot
+
+
+g <- ggplot(data=Wider_for_plot, aes(Wider_for_plot$error))+
+     geom_histogram(aes(fill=incomegroup),position = "stack")+
+    ggtitle("Distribution of error in income GINI values (logGDP as predictor)")+
+    ylab("Count")+
+    xlab("Error (Actual GINI - Predicted GINI)")
+g+scheme_basic
+```
+
+```{r,fig.height=10,fig.width=10}
+
+Error_data_rao_pop %>% 
+  distinct() %>% 
+mutate(share_of_richer_pop = if_else(Category== "q1",0.8,
+                                if_else(Category== "q2", 0.6,
+                                if_else(Category== "q3", 0.4,
+                                if_else(Category== "q4", 0.2,0))))                            ) %>% 
+  mutate(score = (`Income (net)`/100) *(0.2+ (2*share_of_richer_pop))) %>% 
+  mutate(score_imputed = (imputed_income_share/100) *(0.2+ (2*share_of_richer_pop))) %>% 
+  group_by(country,year,incomegroup) %>% 
+  mutate(gini= 1- sum(score),
+         gini_imputed = 1 - sum(score_imputed)) %>% 
+  ungroup() %>% 
+  select(country, year, gini, gini_imputed, incomegroup) %>%
+  distinct() %>% 
+  mutate(error= (gini - gini_imputed)) ->Wider_for_plot_rao
+
+
+g <- ggplot(data=Wider_for_plot_rao, aes(Wider_for_plot_rao$error))+
+     geom_histogram(aes(fill=incomegroup),position = "stack")+
+    ggtitle("Distribution of error in income GINI values (Rao et al model)")+
+    ylab("Count")+
+    xlab("Error (Actual GINI - Predicted GINI)")
+g+scheme_basic
+```
+
+
+
+
+```{r,fig.height=10,fig.width=10}
+
+Error_data_time %>% 
+  distinct() %>% 
+mutate(share_of_richer_pop = if_else(Category== "q1",0.8,
+                                if_else(Category== "q2", 0.6,
+                                if_else(Category== "q3", 0.4,
+                                if_else(Category== "q4", 0.2,0))))                            ) %>% 
+  mutate(score = (`Income (net)`/100) *(0.2+ (2*share_of_richer_pop))) %>% 
+  mutate(score_imputed = (imputed_income_share/100) *(0.2+ (2*share_of_richer_pop))) %>% 
+  group_by(country,year,incomegroup) %>% 
+  mutate(gini= 1- sum(score),
+         gini_imputed = 1 - sum(score_imputed)) %>% 
+  ungroup() %>% 
+  select(country, year, gini, gini_imputed, incomegroup) %>%
+  distinct() %>% 
+  mutate(error= (gini - gini_imputed)) ->Wider_for_plot_time
+
+
+g <- ggplot(data=Wider_for_plot_time, aes(x=Wider_for_plot_time$error))+
+     geom_histogram(aes(fill=incomegroup),position = "stack")+
+    ggtitle("Distribution of error in income GINI values (logGDP and time as predictor)")+
+    ylab("Count")+
+    xlab("Error (Actual GINI - Predicted GINI)")
+
+g+scheme_basic
+```
+
+
+
+
+```{r,fig.height=10,fig.width=10}
+g <- ggplot(data=Error_data  , aes(x=`Income (net)`, y= imputed_income_share))+
+     geom_point(aes(color=incomegroup))+
+    ggtitle("Comparison of actual and imputed income shares (logGDP as predictor)")+
+    ylab("imputed_income_share")+
+    xlab("Actual income share")+facet_wrap(~Category)+
+    geom_abline(slope=1, color= "blue", linetype = "dashed")
+
+g+scheme_basic
+```
+
+```{r,fig.height=8,fig.width=14}
+
+scheme_basic <- theme_bw() +
+    theme(legend.text = element_text(size = 15)) +
+    theme(legend.title = element_text(size = 15)) +
+    theme(axis.text = element_text(size = 18)) +
+    theme(axis.title = element_text(size = 18, face = "bold")) +
+    theme(plot.title = element_text(size = 20, face = "bold", vjust = 1)) +
+    theme(plot.subtitle = element_text(size = 16, face = "bold", vjust = 1))+ 
+    theme(strip.text = element_text(size = 15))+
+    theme(strip.text.x = element_text(size = 18, face = "bold"))+
+    theme(legend.position = "bottom")+
+    theme(legend.text = element_text(size = 15))+
+    theme(legend.title = element_text(size = 15,color = "black",face="bold"))+
+    theme(axis.text.x= element_text(angle=60,hjust=1))+
+    theme(legend.background = element_blank(),
+        legend.box.background = element_rect(colour = "black"))
+
+
+g <- ggplot(data=Error_data_rao_pop %>% mutate(model = "2. Rao et al. Model") %>% bind_rows(Error_data %>% mutate(model = "1. GDP model")) %>% filter(Category %in% c("q1","q5"))  , aes(x=`Income (net)`, y= imputed_income_share))+
+     geom_point(aes(color=model),alpha=0.5,size=2)+
+    ggtitle("Comparison of actual and imputed income shares (multimodel comparison)")+
+    ylab("Predicted income share in percent")+
+    xlab("Actual income share in percent")+facet_wrap(~Category)+
+    geom_abline(slope=1, color= "blue", linetype = "dashed")
+
+g+scheme_basic
+```
+
+
+
+```{r,fig.height=10,fig.width=10}
+g <- ggplot(data=Error_data_time , aes(x=`Income (net)`, y= imputed_income_share))+
+     geom_point(aes(color=incomegroup))+
+    ggtitle("Distribution of error in actual - imputed income shares (logGDP and time as predictors)")+
+    ylab("imputed_income_share")+
+    xlab("Actual income share")+facet_wrap(~Category)+
+    geom_abline(slope=1, color= "blue", linetype = "dashed")
+
+g+scheme_basic
+```
+
+
+
+
+```{r,fig.height=10,fig.width=10}
+
+Wider_for_plot_time %>% 
+  select(country,year,gini,gini_imputed) %>% 
+  gather("gini_type","gini","gini":"gini_imputed")->gini_data
+
+g <- ggplot(data=gini_data , aes(x=year,y=gini))+
+     geom_point(aes(color=gini_type))+
+    ggtitle("Distribution of actual and imputed GINI over time (logGDP and time as predictors for predicted GINI)")+
+    ylab("GINI")+
+    xlab("year")+
+    geom_abline(slope=1, color= "blue", linetype = "dashed")
+
+g+scheme_basic
+```
+
+
+```{r,fig.height=10,fig.width=10}
+
+Wider_for_plot_rao %>% 
+  select(country,year,gini,gini_imputed) %>% 
+  gather("gini_type","gini","gini":"gini_imputed")->gini_data
+
+g <- ggplot(data=gini_data , aes(x=year,y=gini))+
+     geom_point(aes(color=gini_type))+
+    ggtitle("Distribution of actual and imputed GINI over time (Rao et al. based model)")+
+    ylab("GINI")+
+    xlab("year")+
+    geom_abline(slope=1, color= "blue", linetype = "dashed")
+
+g+scheme_basic
+```
+
+
+
+```{r,fig.height=10,fig.width=10}
+Wider_for_plot %>% 
+  select(country,year,gini,gini_imputed) %>% 
+  rename(gini_imputed_gdp_model = gini_imputed)->gini_data
+
+g <- ggplot(data=gini_data %>% filter(country %in% c("India","China","United States","South Africa","Norway","Namibia","Slovenia","Pakistan","Nigeria")) , aes(x=year,y=gini))+
+     geom_point(aes(color=gini_type))+
+    ggtitle("Distribution of error in actual - imputed GINI (logGDP as predictor)")+
+    ylab("GINI")+
+    xlab("year")+
+    facet_wrap(~country)
+g+scheme_basic
+```
+
+```{r,fig.height=14,fig.width=14}
+Wider_for_plot_rao %>% 
+  select(country,year,gini,gini_imputed) %>%
+  rename(gini_imputed_rao = gini_imputed) %>% 
+  inner_join(gini_data %>% select(country,year,gini_imputed_gdp_model), by = c("country","year")) %>% 
+  gather("gini_type","gini","gini":"gini_imputed_gdp_model")->gini_data_rao
+
+g <- ggplot(data=gini_data_rao %>% filter(country %in% c("India","China","United States","South Africa","Norway","Namibia","Slovenia","Pakistan","Nigeria"))  , aes(x=year,y=gini),group=gini_type)+
+     geom_point(aes(color=gini_type),size=2)+
+     geom_line(aes(color=gini_type))+
+    ggtitle("Predicted vs Actual GINI over time accross countries (Rao et al. is pop weighted)")+
+    ylab("GINI")+
+    xlab("year")+
+    facet_wrap(~country)+
+   scale_color_aaas()
+
+g+scheme_basic
+```
+
+
+
+
+```{r,fig.height=14,fig.width=14}
+Error_data_rao_pop %>% 
+  select(country,year,imputed_income_share,`Income (net)`,Category) %>% 
+  gather("type","value","imputed_income_share":"Income (net)")->inequality_data
+
+g <- ggplot(data=inequality_data %>% filter(Category=="q5", country %in% c("China","India","United States","Canada","Nigeria","Slovenia","South Africa")) , aes(x=year,y=value), group=country)+
+     geom_point(aes(color=type))+
+     geom_line(aes(color=type))+
+    scale_color_manual(values = c("dark blue","dark green"))+
+    ggtitle("Actual and imputed shares of income by quintile ")+
+    ylab("Share as a percentage of total income")+
+    xlab("year")+
+    facet_wrap(~country+Category)
+g+scheme_basic
+```
+```{r}
+Wider_comp_data %>% 
+  left_join(gini_data %>% select(country,year,gini), by= c("country","year")) %>% 
+  select(-Category, -`Income (net)`) %>% 
+  distinct()->Wider_comp_data_w_gini
+
+model <- lm(gini ~ year+loggdp, data=Wider_comp_data_w_gini)
+
+```
+
+
+```{r,fig.height=10,fig.width=10}
+Error_data_rao %>% 
+  select(-error) %>% 
+  gather("gini_type","value","imputed_income_share":"Income (net)")->tmp
+
+g <- ggplot(data=tmp) + 
+    geom_point( aes(x=gdp_ppp_pc_usd2011,y=value,color=gini_type),alpha=0.5)+
+    facet_wrap(~Category, scales="free_y")+
+    scale_color_npg()+
+    ggtitle("Predicted vs actual using logGDP model")
+
+g+scheme_basic
+```
+
+
+```{r,fig.height=10,fig.width=10}
+g<-plotmeans(error ~ incomegroup, data = Error_data %>% filter(Category=="q5") %>% na.omit() %>% filter(year <2018),n.label=FALSE)
+```
+
+
+
+```{r,fig.height=10,fig.width=10}
+WIDER %>%  select(country, year, incomegroup) %>% 
+           distinct()->income_groupings 
+
+WIDER %>%  select(country, year, incomegroup) %>% 
+           distinct()->income_groupings 
+
+Wider_aggregated_source %>%  
+  left_join(income_groupings, by =c("country","year")) %>% ungroup()->Wider_for_plot
+
+Wider_for_plot %>%  filter( income_concept == "Income (net)") %>% 
+                    rename(`Income (net)` = value) %>% 
+                     select(-ref,-income_concept)->income_data
+
+Wider_for_plot %>%  filter( income_concept == "Consumption") %>% 
+                    rename(Consumption = value) %>% 
+                    select(-ref,-income_concept) ->cons_data
+
+WIDER %>%  select(country, year, gdp_ppp_pc_usd2011) %>% 
+           distinct() %>% 
+           group_by(country, year) %>% 
+           mutate(gdp_ppp_pc_usd2011 = mean(gdp_ppp_pc_usd2011)/1000) %>% 
+           distinct()->gdp_data
+
+income_data %>% left_join(gdp_data, by= c("country","year")) %>%  rename(value = `Income (net)`)->income_comp_data
+
+
+cons_data %>% left_join(gdp_data, by= c("country","year")) %>% rename(value = Consumption)->consumption_comp_data
+
+cons_comp_data <- bind_rows(consumption_comp_data, income_comp_data)
+
+
+g <- ggplot(data=cons_comp_data, aes(x=gdp_ppp_pc_usd2011,y=value))+
+     geom_point(aes(color=incomegroup))+
+     stat_poly_eq(aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+               label.x.npc = "left",
+               formula = formula, parse = TRUE, size = 3)+
+    ggtitle("Comparison of all distribution values with GDP per capita across countries, years from aggregated WIDER")+
+    labs(subtitle = paste0("n = 1972 , Units are in percent (percent of total income concept)"))+
+     geom_smooth(method = "lm", formula = "y ~ log(x)" ,se = FALSE, color= "blue", linetype = "dashed")+
+     facet_wrap(~Category,scales= "free_y")+
+     xlab("GDP per capita in thous USD")+
+     ylab("Share in total income concept")
+
+g + scheme_basic
+
+
+
+```
+
+```{r,fig.height=10,fig.width=10}
+WIDER %>%  select(country, year, incomegroup) %>% 
+           distinct()->income_groupings 
+
+Wider_aggregated_source %>%  
+  left_join(income_groupings, by =c("country","year")) %>% ungroup()->Wider_for_plot
+
+Wider_for_plot %>%  filter( income_concept == "Income (net)") %>% 
+                    rename(`Income (net)` = value) %>% 
+                     select(-ref,-income_concept)->income_data
+
+Wider_for_plot %>%  filter( income_concept == "Consumption") %>% 
+                    rename(Consumption = value) %>% 
+                    select(-ref,-income_concept) ->cons_data
+
+
+WIDER %>%  select(country, year, gdp_ppp_pc_usd2011) %>% 
+           distinct() %>% 
+           group_by(country, year) %>% 
+           mutate(gdp_ppp_pc_usd2011 = mean(gdp_ppp_pc_usd2011)/1000) %>% 
+           distinct()->gdp_data
+
+income_data %>% left_join(gdp_data, by= c("country","year")) %>%  rename(value = `Income (net)`)->income_comp_data
+
+
+cons_data %>% left_join(gdp_data, by= c("country","year")) %>% rename(value = Consumption)->consumption_comp_data
+
+cons_comp_data <- bind_rows(consumption_comp_data, income_comp_data)
+
+
+g <- ggplot(data=cons_comp_data, aes(x=gdp_ppp_pc_usd2011,y=value))+
+     geom_point(aes(color=Category))+
+     stat_poly_eq(aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+               label.x.npc = "left",
+               formula = formula, parse = TRUE, size = 3)+
+    ggtitle("Comparison of all distribution values with GDP per capita across countries, years from aggregated WIDER")+
+    labs(subtitle = paste0("n = 1972 , Units are in percent (percent of total income concept)"))+
+     geom_smooth(method = "lm", formula = "y ~ log(x)" ,se = FALSE, color= "blue", linetype = "dashed")+
+     facet_grid(rows = vars(Category), cols= vars(incomegroup),scales= "free")+
+     xlab("GDP per capita in thous USD")+
+     ylab("Share in total income concept (percent)")
+
+g + scheme_basic
+
+
+```
+
+
+
+
+### Figure 18: Comparison of income distribution values with GDP per capita in thousand USD. Note: 159 observations for high income countries, 358 for upper middle income countries, 333 for lower middle income countries and 116 for low income countries (Separate facets by income group and quintile)
+
+```{r,fig.height=10,fig.width=10}
+
+formula <- y ~ log(x)
+
+WIDER %>%  select(country, year, incomegroup) %>% 
+           distinct()->income_groupings 
+
+Wider_aggregated_source %>%  filter(income_concept %in% c("Income (net)")) %>% 
+  left_join(income_groupings, by =c("country","year")) %>% ungroup()->Wider_for_plot
+
+Wider_for_plot %>%  filter( income_concept == "Income (net)") %>% 
+                    rename(`Income (net)` = value) %>% 
+                     select(-ref,-income_concept)->income_data
+
+Wider_for_plot %>%  filter( income_concept == "Consumption") %>% 
+                    rename(Consumption = value) %>% 
+                    select(-ref,-income_concept) ->cons_data
+
+
+WIDER %>%  select(country, year, gdp_ppp_pc_usd2011) %>% 
+           distinct() %>% 
+           group_by(country, year) %>% 
+           mutate(gdp_ppp_pc_usd2011 = mean(gdp_ppp_pc_usd2011)/1000) %>% 
+           distinct()->gdp_data
+
+income_data %>% left_join(gdp_data, by= c("country","year"))->Wider_comp_data
+
+
+g <- ggplot(data=Wider_comp_data, aes(x=gdp_ppp_pc_usd2011,y=`Income (net)`))+
+     geom_point(aes(color=incomegroup))+
+    stat_poly_eq(aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+               label.x.npc = "left",
+               formula = formula, parse = TRUE, size = 3)+
+    ggtitle("Comparison of Consumption distribution values with GDP per capita across countries, years from aggregated WIDER")+
+    labs(subtitle = paste0("n = 1083 , Units are in percent (percent of total income)"))+
+     geom_smooth(method = "lm", se = FALSE,formula = "y ~ log(x)",color= "blue", linetype = "dashed")+
+     facet_grid(rows = vars(Category), cols= vars(incomegroup),scales= "free")+
+     xlab("GDP per capita in thous USD")+
+     ylab("Share in total income (percent)")
+
+g + scheme_basic
+
+```
+### Figure 15: Comparison of consumption distribution values with GDP per capita in thousand USD. Note: 159 observations for high income countries, 358 for upper middle income countries, 333 for lower middle income countries and 116 for low income countries 
+
+```{r,fig.height=10,fig.width=10}
+
+WIDER %>%  select(country, year, incomegroup) %>% 
+           distinct()->income_groupings 
+
+Wider_aggregated_source %>%  filter(income_concept %in% c("Income (net)","Consumption")) %>% 
+  left_join(income_groupings, by =c("country","year")) %>% ungroup()->Wider_for_plot
+
+Wider_for_plot %>%  filter( income_concept == "Income (net)") %>% 
+                    rename(`Income (net)` = value) %>% 
+                     select(-ref,-income_concept)->income_data
+
+Wider_for_plot %>%  filter( income_concept == "Consumption") %>% 
+                    rename(Consumption = value) %>% 
+                    select(-ref,-income_concept) ->cons_data
+
+cons_data %>% 
+  left_join(income_data, by = c("country","year","incomegroup","Category")) %>% 
+  na.omit() %>% 
+  mutate(diff = (abs(Consumption - `Income (net)`)))->cons_data
+
+
+WIDER %>%  select(country, year, gdp_ppp_pc_usd2011) %>% 
+           distinct() %>% 
+           na.omit() %>% 
+           group_by(country, year) %>% 
+           mutate(gdp_ppp_pc_usd2011 = mean(gdp_ppp_pc_usd2011)/1000) %>% 
+           distinct()->demand_data
+
+cons_data %>% inner_join(demand_data, by= c("country","year"))->Wider_comp_data
+
+
+g <- ggplot(data=Wider_comp_data, aes(x=gdp_ppp_pc_usd2011,y=diff))+
+     geom_point(aes(color=incomegroup))+
+    ggtitle("Comparison of absolute error between consumption and income distribution values relative to GDP per capita")+
+    labs(subtitle = paste0("n = 257 "))+
+     geom_smooth(method = "lm",formula = "y ~ log(x)", se = FALSE, color= "blue", linetype = "dashed")+
+     facet_wrap(~Category,scales="free_y")+
+     xlab("GDP per capita in thous USD")+
+     ylab("Error between income and consumption distribution values (in percent)")+
+     ylim(0,NA)
+
+g + scheme_basic
+
+```
+
+```{r,fig.height=10,fig.width=10}
+WIDER %>%  select(country, year, incomegroup) %>% 
+           distinct()->income_groupings 
+
+Wider_aggregated_source %>%  filter(income_concept %in% c("Income (net)","Consumption")) %>% 
+  left_join(income_groupings, by =c("country","year")) %>% ungroup()->Wider_for_plot
+
+Wider_for_plot %>%  filter( income_concept == "Income (net)") %>% 
+                    rename(`Income (net)` = value) %>% 
+                     select(-ref,-income_concept)->income_data
+
+Wider_for_plot %>%  filter( income_concept == "Consumption") %>% 
+                    rename(Consumption = value) %>% 
+                    select(-ref,-income_concept) ->cons_data
+
+cons_data %>% 
+  left_join(income_data, by = c("country","year","incomegroup","Category")) %>% 
+  na.omit() %>% 
+  mutate(diff = ((Consumption - `Income (net)`)))->cons_data
+
+
+WIDER %>%  select(country, year, gdp_ppp_pc_usd2011) %>% 
+           distinct() %>% 
+           na.omit() %>% 
+           group_by(country, year) %>% 
+           mutate(gdp_ppp_pc_usd2011 = mean(gdp_ppp_pc_usd2011)/1000) %>% 
+           distinct()->demand_data
+
+cons_data %>% inner_join(demand_data, by= c("country","year"))->Wider_comp_data
+
+
+g <- ggplot(data=Wider_comp_data, aes(x=gdp_ppp_pc_usd2011,y=diff))+
+     geom_point(aes(color=incomegroup))+
+    ggtitle("Comparison of signed error between consumption and income distribution values relative to GDP per capita")+
+    labs(subtitle = paste0("n = 257 "))+
+     geom_smooth(method = "lm",formula = "y ~ log(x)", se = FALSE, color= "blue", linetype = "dashed")+
+     facet_wrap(~Category,scales="free_y")+
+     xlab("GDP per capita in thous USD")+
+     ylab("Error between income and consumption distribution values (in percent)")
+
+g + scheme_basic
+
+```
+
+```{r,fig.height=10,fig.width=10}
+WIDER %>%  select(country, year, incomegroup) %>% 
+           distinct()->income_groupings 
+
+Wider_aggregated_source %>%  filter(income_concept %in% c("Income (net)","Consumption")) %>% 
+  left_join(income_groupings, by =c("country","year")) %>% ungroup()->Wider_for_plot
+
+Wider_for_plot %>%  filter( income_concept == "Income (net)") %>% 
+                    rename(`Income (net)` = value) %>% 
+                     select(-ref,-income_concept)->income_data
+
+Wider_for_plot %>%  filter( income_concept == "Consumption") %>% 
+                    rename(Consumption = value) %>% 
+                    select(-ref,-income_concept) ->cons_data
+
+cons_data %>% 
+  left_join(income_data, by = c("country","year","incomegroup","Category")) %>% 
+  na.omit() %>% 
+  mutate(diff = ((Consumption - `Income (net)`)))->cons_data
+
+
+WIDER %>%  select(country, year, gdp_ppp_pc_usd2011) %>% 
+           distinct() %>% 
+           na.omit() %>% 
+           group_by(country, year) %>% 
+           mutate(gdp_ppp_pc_usd2011 = mean(gdp_ppp_pc_usd2011)/1000) %>% 
+           distinct()->demand_data
+
+cons_data %>% inner_join(demand_data, by= c("country","year"))->Wider_comp_data
+
+
+g <- ggplot(data=Wider_comp_data, aes(x=gdp_ppp_pc_usd2011,y=diff))+
+     geom_point(aes(color=Category))+
+    ggtitle("Comparison of signed error between income and consumption distribution values relative to GDP per capita across income groups")+
+    labs(subtitle = paste0("n = 257 "))+
+     geom_smooth(method = "lm",formula = "y ~ log(x)", se = FALSE, color= "blue", linetype = "dashed")+
+     facet_wrap(~incomegroup,scales="free")+
+     xlab("GDP per capita in thous USD")+
+     ylab("Error between income and consumption distribution values (in percent)")
+
+g + scheme_basic
+```
+

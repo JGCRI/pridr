@@ -1,0 +1,21 @@
+Package: pridr
+Type: R package
+Title: Project and represent income distributions in R at different scales.
+Version: 0.1.0
+Author: Kanishka Narayan, Brian O'Neil, Stephanie Waldhoff & Claudia Tebaldi
+Maintainer: Kanishka Narayan <kanishka.narayan@pnnl.gov>
+Description: Project and represent income distributions in R at different scales.
+License: BSD2
+Encoding: UTF-8
+LazyData: true
+Imports:
+    tidyr (>= 1.1),
+    dplyr (>= 1.0),
+    ggsci (>= 2.9),
+    zoo (>= 1.8),
+    data.table (>= 1.1),
+    ggplot2 (>= 2.2.1),
+    assertthat (>= 0.2),
+    parallel,
+    doParallel (>= 1.0),
+    rmarkdown

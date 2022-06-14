@@ -116,8 +116,8 @@ get_PCA_loadings <- function(df,
   return(as_tibble(pc_results))
 }
 
-compute_components_data <- function(df,center_and_scaler_data=NULL,
-                               pc_loadings =NULL,category_col = "category",
+compute_components_data <- function(df,center_and_scaler_data=pc_center_sd,
+                               pc_loadings =pc_loading_matrix,category_col = "Category",
                                value_col = "value",SCALE=TRUE,
                                number_of_features =10,
                                grouping_variables= c("country", "year")){
@@ -162,15 +162,17 @@ compute_components_data <- function(df,center_and_scaler_data=NULL,
 
 
 get_deciles_from_components <- function(df,use_second_comp = TRUE,
-                                        pc_loadings =NULL,
-                                        center_and_scaler = NULL,
+                                        pc_loadings =pc_loading_matrix,
+                                        center_and_scaler = pc_center_sd,
                                         features = c("d1","d2","d3","d4",
                                                      "d5","d6","d7","d8","d9","d10"),
-                                        category_col ="category",
+                                        category_col ="Category",
                                         input_df= Wider_data_full,
                                         value_col = "Income..net.",
                                         grouping_variables = c("country","year")){
 
+
+  pred_shares <- NULL
   if(use_second_comp){
     comp1_weight <- 1
     comp2_weight<- 1
@@ -223,7 +225,7 @@ get_deciles_from_components <- function(df,use_second_comp = TRUE,
 }
 
 
-adjust_negative_predicted_features <- function(df,value_col="pred_shares",
+adjust_negative_predicted_features <- function(df,
                                                min_lowest_feature_val = 0.006,
                                                grouping_variables = c("country","year")){
 
@@ -285,7 +287,7 @@ GINI_downscaling_model <- function(df,gini_col = "gini",
     mutate(Component1= (!!as.name(gini_col)*coeff)+intercept)->df_w_Comp1
 
   if(historical_fit){
-    df_comp_2 <- compute_components(raw_data, d1_start_col = start_index) %>%
+    df_comp_2 <- compute_components_data(raw_data, d1_start_col = start_index) %>%
       select(c(grouping_variables,"Component2","year")) %>%
       distinct()
 
@@ -293,7 +295,7 @@ GINI_downscaling_model <- function(df,gini_col = "gini",
       left_join(df_comp_2, by = c(grouping_variables,"year"))->df_consolidated
   }else{
 
-    df_comp_2 <- compute_components(raw_data, d1_start_col = start_index) %>%
+    df_comp_2 <- compute_components_data(raw_data, d1_start_col = start_index) %>%
       group_by(across(grouping_variables)) %>%
       mutate(max_year = max(year))%>%
       ungroup() %>%
@@ -621,7 +623,7 @@ compute_deciles_lognormal <- function(df, print_progress = TRUE){
 compute_palma_ratio <- function(df,
                                 group_cols = c("country", "year"),
                                 category_col = "Category",
-                                income_col= "Income..net."){
+                                income_col= "pred_shares"){
   df %>%
     select(group_cols,category_col,income_col) %>%
     spread(category_col,income_col) %>%
@@ -647,5 +649,144 @@ approx_fun <- function(year, value, rule = 1) {
   }
 }
 
+compute_PC_model_components <- function(df){
+  print("Starting computation")
+ pred_shares <- NULL
+  df %>% arrange(year)->df
+
+
+
+  final_year = max(df$year)
+
+
+  #Dont know why we needed to define another version of this function here. For some reason, parallel Lapply does not like it.
+  get_deciles_from_components_temp <- function(df,use_second_comp = TRUE,
+                                          pc_loadings =pc_loading_matrix,
+                                          center_and_scaler = pc_center_sd,
+                                          features = c("d1","d2","d3","d4",
+                                                       "d5","d6","d7","d8","d9","d10"),
+                                          category_col ="Category",
+                                          input_df= Wider_data_full,
+                                          value_col = "Income..net.",
+                                          grouping_variables = c("country","year")){
+
+
+    pred_shares <- NULL
+    if(use_second_comp){
+      comp1_weight <- 1
+      comp2_weight<- 1
+    }else{
+      comp1_weight <- 1
+      comp2_weight<- 0
+
+    }
+    df_val <- df
+    for (i in features){
+      df_val[i] <- 0
+
+    }
+
+    df_val %>%
+      gather("Category","pred_shares",toString(features[1]):toString(features[length(features)]))->df_with_categories
+
+    if(is.null(center_and_scaler)){
+
+      center_and_scaler <- get_sd_center(input_df, category_col = category_col, value_col = value_col)
+
+
+    }
+    if(is.null(pc_loadings)){
+
+      pc_loadings <- get_PCA_loadings(input_df,category_col = category_col, value_col = value_col,,
+                                      number_of_features = length(features),
+                                      grouping_variables = grouping_variables)
+
+    }
+
+    df_with_categories %>%
+      left_join(center_and_scaler, by = c(category_col)) %>%
+      left_join(pc_loadings, by = c(category_col)) %>%
+      mutate(pred_shares = (((Component1*PC1*comp1_weight)+(Component2*PC2*comp2_weight))*sd)+center)->df_with_pred_shares
+
+    df_with_pred_shares  %>%
+      filter(pred_shares <0)->negative_features
+
+    if(nrow(negative_features>0)){
+
+      print(paste0("There are negative values for ",nrow(negative_features), " observations. Please use the correction function to correct negative values!."))
+    }
+
+    df_with_pred_shares %>%
+      select(grouping_variables, category_col, pred_shares,Component1,Component2) %>%
+      distinct()->df_with_pred_shares
+
+    return(df_with_pred_shares)
+  }
+
+
+
+
+  for (row in 1:nrow(df)){
+    if(df$year[row]<final_year){
+      print(df$year[row])
+      df$Component1[row] <- -11.48 +  (29.72*df$gini[row])
+      df$Component2[row] <- -17.77579 +(df$labsh[row]*0.99944)+(112.35374*df$lagged_ninth_decile[row])+(df$lagged_palma_ratio[row]*-0.34552)
+
+       year_temp <- df$year[row]
+       df %>%
+        get_deciles_from_components_temp() %>%
+         filter(year ==year_temp) %>%
+         mutate(pred_shares = if_else(is.na(pred_shares),0.0005,pred_shares))->computed_deciles
+
+       palma_ratio <- computed_deciles %>% spread(Category,pred_shares) %>% mutate(palma_ratio= d10/(d1+d2+d3+d4))
+
+      #
+      #
+       computed_deciles %>%
+         filter(year == df$year[row]) %>%
+         filter(Category=="d9") %>%
+         rename(shares=pred_shares)->ninth_decile_value
+      #
+      #
+      df$lagged_ninth_decile[row+1] <- unique(ninth_decile_value$shares)
+      df$lagged_palma_ratio[row+1] <-  unique(palma_ratio$palma_ratio)
+    }else{
+      df$Component1[row] <- -11.48 +  29.72*df$gini[row]
+      df$Component2[row] <- -17.77579 +(df$labsh[row]*0.99944)+(112.35374*df$lagged_ninth_decile[row])+(df$lagged_palma_ratio[row]*-0.34552)
+
+    }
+  }
+  xm_temp <- paste0("Completed ","country ", unique(df$country), " sce " ,unique(df$sce))
+
+  write.table(xm_temp,file= paste0("PC_model_results_log",Sys.Date(),".dat"),append = TRUE,row.names = FALSE,col.names = FALSE)
+  return(df)
+}
+
+PC_model <- function(df){
+
+  df %>%
+    #First we need first year values
+    mutate(id= paste0(country,sce)) ->data_for_split
+
+  data_for_func <- split(data_for_split, data_for_split$id)
+
+  cl <- create_cores()
+
+  t <- parLapply(cl,data_for_func,compute_PC_model_components)
+
+  stopCluster(cl)
+
+  print("Now generating deciles")
+
+  t_data <- rbindlist(t) %>%
+    get_deciles_from_components(use_second_comp = TRUE,grouping_variables = c("country","year","sce")) %>%
+    adjust_negative_predicted_features(grouping_variables = c("country","year","sce"))
+
+  return(t_data)
+
+
+
+
+}
 
 

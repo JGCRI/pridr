@@ -158,107 +158,13 @@ write.csv(consolidated_state_level_data, "US_50_states_DC_net_income_deciles_191
 #* link: https://zenodo.org/record/3956412#.YogQ2KjMI2z
 #Load data from file
 ##aggregate population across states by year and ssp
-
-#add in direction to folders
-#create for loop to fill in file names and load csv
-#load in csv using loop, pastes in name object, check.names takes out x in front of years
-#bind rows after loading in
-#create objects to store file location and names
-#*separately looped SSPs because it doesn't take long and can be combined
-
-
-#SSP2
-list.dirs("./SSP2")->directories2
-file_list <- list.files(path = directories2, pattern = "*_proj_pop.csv", full.names = T)
-dfs <- list() #creates empty data frame
-
-#for loop
-for(i in 1:length(file_list)) {
-
-  # read in the ith csv
-  temp_df <- read.csv(file = file_list[[i]],
-                      stringsAsFactors = F,check.names=FALSE) %>%
-    gather(year, population, starts_with("2")) %>%
-    select(state,year,population) %>%
-    group_by(state,year) %>%
-    mutate(population=sum(population)) %>%
-    ungroup()  %>%
-    distinct() %>%
-    mutate(sce="SSP2")
-
-  dfs[[i]] <- temp_df
-
-}
-
-SSP2<- do.call(rbind, dfs)
-#*if aggregating correctly AL pop=4782789.0 for 2010 in ssp2
-
-#SSP3
-list.dirs("./SSP3")->directories3
-file_list <- list.files(path = directories3, pattern = "*_proj_pop.csv", full.names = T)
-dfs <- list() #creates empty data frame
-
-#for loop
-for(i in 1:length(file_list)) {
-
-  # read in the ith csv
-  temp_df <- read.csv(file = file_list[[i]],
-                      stringsAsFactors = F,check.names=FALSE) %>%
-    gather(year, population, starts_with("2")) %>%
-    select(state,year,population) %>%
-    group_by(state,year) %>%
-    mutate(population=sum(population)) %>%
-    ungroup()  %>%
-    distinct() %>%
-    mutate(sce="SSP3")
-
-  dfs[[i]] <- temp_df
-
-}
-
-SSP3<- do.call(rbind, dfs)
-#*if aggregating correctly AL pop=3917760 for 2100 in SSP3
-
-#SSP5
-list.dirs("./SSP5")->directories5
-file_list <- list.files(path = directories5, pattern = "*_proj_pop.csv", full.names = T)
-dfs <- list() #creates empty data frame
-
-#for loop
-for(i in 1:length(file_list)) {
-
-  # read in the ith csv
-  temp_df <- read.csv(file = file_list[[i]],
-                      stringsAsFactors = F,check.names=FALSE) %>%
-    gather(year, population, starts_with("2")) %>%
-    select(state,year,population) %>%
-    group_by(state,year) %>%
-    mutate(population=sum(population)) %>%
-    ungroup()  %>%
-    distinct() %>%
-    mutate(sce="SSP5")
-
-  dfs[[i]] <- temp_df
-
-}
-
-SSP5<- do.call(rbind, dfs)
-#*if aggregating correctly AK pop=726220.1 for 2100 in SSP5
-
-#join ssps
-#*has data for every year for 3 ssps in actual population units
-#*should have 13923 rows
-agg_pop <- rbind(SSP2,SSP3,SSP5) %>%
-  arrange(year,sce,state) %>%
-  rename(total_pop=population) %>%
-  mutate(year=as.numeric(year))
-#rearrange columns
-agg_pop <- agg_pop[,c("year","sce","state","total_pop")]
-
+##load in prebuilt dataframe from csv
+#* if we need original data files we can add the loop back in
+agg_pop <- read.csv("./consolidated_SSP_state_population_projections.csv",
+			stringsAsFactors= FALSE, check.names=FALSE)
 
 
 #Get ratio of gdp per capita between scenarios:
-
 
 #load in USA GPD and POP projections as objects
 ##gdp units billions $

@@ -38,7 +38,7 @@ scheme_basic <- theme_bw() +
         legend.box.background = element_rect(colour = "black"))+
   theme(legend.key.width=unit(2,"cm"))
 
-setwd("../../Data/")
+setwd("../../Input_Data/")
 
 #income deciles data
 

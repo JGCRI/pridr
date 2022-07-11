@@ -515,7 +515,7 @@ aggregate_country_deciles_to_regions <- function(df,value_col="Income..net.",gro
 }
 
 
-compute_lognormal_dist <- function(mean_income, gini, max_income, len_sample){
+compute_lognormal_dist <- function(mean_income, gini, max_income=mean_income*10, len_sample=2000){
 
   sd <- 2 * erfinv(gini)
   m <- log(mean_income) -((sd^2)/2)

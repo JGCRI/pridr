@@ -649,7 +649,8 @@ approx_fun <- function(year, value, rule = 1) {
   }
 }
 
-compute_PC_model_components <- function(df){
+compute_PC_model_components <- function(df,grouping_variables=c("country","year"),
+                                        value_col="Income..net."){
   print("Starting computation")
  pred_shares <- NULL
   df %>% arrange(year)->df
@@ -667,8 +668,8 @@ compute_PC_model_components <- function(df){
                                                        "d5","d6","d7","d8","d9","d10"),
                                           category_col ="Category",
                                           input_df= Wider_data_full,
-                                          value_col = "Income..net.",
-                                          grouping_variables = c("country","year")){
+                                          value_col = NULL,
+                                          grouping_variables = NULL){
 
 
     pred_shares <- NULL
@@ -727,14 +728,17 @@ compute_PC_model_components <- function(df){
 
 
   for (row in 1:nrow(df)){
+    #First check if you are in the last year, If not,
+    #Compute based on given values of lagged ninth decile and lagged palma ratio
     if(df$year[row]<final_year){
-      print(df$year[row])
+
       df$Component1[row] <- -11.48 +  (29.72*df$gini[row])
       df$Component2[row] <- -17.77579 +(df$labsh[row]*0.99944)+(112.35374*df$lagged_ninth_decile[row])+(df$lagged_palma_ratio[row]*-0.34552)
 
        year_temp <- df$year[row]
        df %>%
-        get_deciles_from_components_temp() %>%
+        get_deciles_from_components_temp(grouping_variables = grouping_variables,
+                                         value_col = value_col) %>%
          filter(year ==year_temp) %>%
          mutate(pred_shares = if_else(is.na(pred_shares),0.0005,pred_shares))->computed_deciles
 
@@ -747,32 +751,39 @@ compute_PC_model_components <- function(df){
          filter(Category=="d9") %>%
          rename(shares=pred_shares)->ninth_decile_value
       #
-      #
+      #Rewrite autoregressive terms for next year
       df$lagged_ninth_decile[row+1] <- unique(ninth_decile_value$shares)
       df$lagged_palma_ratio[row+1] <-  unique(palma_ratio$palma_ratio)
     }else{
+      #If you are in the last year don't rewrite anything. Just compute the components
       df$Component1[row] <- -11.48 +  29.72*df$gini[row]
       df$Component2[row] <- -17.77579 +(df$labsh[row]*0.99944)+(112.35374*df$lagged_ninth_decile[row])+(df$lagged_palma_ratio[row]*-0.34552)
 
     }
   }
-  xm_temp <- paste0("Completed ","country ", unique(df$country), " sce " ,unique(df$sce))
+  #xm_temp <- paste0("Completed ","country ", unique(df$country), " sce " ,unique(df$sce))
+  #write.csv(df %>% filter(iso=="usa"),"USA_debug.csv")
 
-  write.table(xm_temp,file= paste0("PC_model_results_log",Sys.Date(),".dat"),append = TRUE,row.names = FALSE,col.names = FALSE)
+  #write.table(xm_temp,file= paste0("PC_model_results_log",Sys.Date(),".dat"),append = TRUE,row.names = FALSE,col.names = FALSE)
   return(df)
 }
 
-PC_model <- function(df){
+PC_model <- function(df,grouping_variables=c("country","year"),
+                     value_col="Income..net.",
+                     id_col = c("country")){
 
   df %>%
+    group_by(across((id_col))) %>%
     #First we need first year values
-    mutate(id= paste0(country,sce)) ->data_for_split
+    mutate(id= cur_group_id()) %>%
+    ungroup()->data_for_split
 
+  print(head(data_for_split))
   data_for_func <- split(data_for_split, data_for_split$id)
 
   cl <- create_cores()
 
-  t <- parLapply(cl,data_for_func,compute_PC_model_components)
+  t <- parLapply(cl,data_for_func,compute_PC_model_components, grouping_variables=grouping_variables, value_col=value_col)
 
   stopCluster(cl)
 
@@ -788,5 +799,6 @@ PC_model <- function(df){
 
 
 }
+
 
 

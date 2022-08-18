@@ -73,7 +73,7 @@ g <- ggplot(data=pca_stats_plot, aes(group=id))+
 g+scheme_basic
 pc_center_sd <- get_sd_center(Wider_data_full,category_col = "Category",value_col = "Income..net.")
 
-Wider_data_full %>% compute_components(center_and_scaler_data = pc_center_sd,
+Wider_data_full %>% compute_components_data(center_and_scaler_data = pc_center_sd,
                                         pc_loadings = pca_stats,category_col = "Category",
                                         value_col = "Income..net.") %>%
                     get_deciles_from_components(use_second_comp = TRUE,
@@ -121,7 +121,7 @@ g+scheme_basic
 
 
 
-Wider_data_full %>% compute_components(center_and_scaler_data = pc_center_sd,
+Wider_data_full %>% compute_components_data(center_and_scaler_data = pc_center_sd,
                                        pc_loadings = pca_stats,category_col = "Category",
                                        value_col = "Income..net.") %>%
   get_deciles_from_components(use_second_comp = FALSE,
@@ -161,15 +161,15 @@ data_comp_2 %>% left_join(data_comp_1 %>% select(shares_w_comp1 = pred_shares,co
   compute_gini_deciles(grouping_variables = c("country","year"), inc_col = "pred_shares")->t
 
 g <- ggplot(data= t %>% filter(Category=="d10"), aes(x=output_name, y=palma_ratio))+
-     geom_point()+
-     xlab("GINI")+
-     ylab("palma ratio")
+     geom_point(color="light blue")+
+     xlab("GINI (Across all country years)")+
+     ylab("palma ratio (Across all country years)")
 
 g+scheme_basic
 
 
 
-g <- ggplot(data=t, aes(x=(Component2), y= abs_perc_error*100))+
+g <- ggplot(data=t, aes(x=abs(Component2), y= abs(abs_perc_error*100)))+
      geom_point()+
      xlab("Absolute value of Component2")+
      ylab("Difference in perc points")+
@@ -178,7 +178,7 @@ g <- ggplot(data=t, aes(x=(Component2), y= abs_perc_error*100))+
 g+scheme_basic
 
 t %>% #filter(year %in% c(2010:2015)) %>%
-  filter(Category %in% c("d1","d8","d9","d7"))%>%
+  #filter(Category %in% c("d1","d8","d9","d7"))%>%
   select(country,year,Component2,abs_perc_error,Category) %>%
   group_by(country,year) %>%
   mutate(abs_perc_error=sum(abs_perc_error)) %>%
@@ -187,14 +187,45 @@ t %>% #filter(year %in% c(2010:2015)) %>%
   mutate(abs_Comp2 = abs(Component2))->base_year_data
 
 base_year_data %>%
-  filter(abs_Comp2 < 4) %>%
+  filter(abs_Comp2 > 1.5) %>%
   mutate(obs=1) %>%
   group_by(country) %>%
   mutate(obs = sum(obs)) %>%
   ungroup() %>%
-  filter(obs >= 2)->anomalies
+  filter(obs >= 3)->anomalies
 
 anomalies %>% filter(Category != "d10")->p
+data_comp_1 %>%
+  filter((Component2)> 0) %>%
+  spread(Category,pred_shares) %>%
+  mutate(palma_ratio_single= d10/(d1+d2+d3+d4)) %>%
+  left_join(data_comp_2 %>%
+              filter((Component2)> 0) %>%
+              spread(Category,pred_shares) %>%
+              mutate(palma_ratio_two= d10/(d1+d2+d3+d4)) %>%
+              dplyr::select(country,year,palma_ratio_two))->palma_compare
+
+data_comp_2 %>%
+  #filter((Component2)> 0) %>%
+  spread(Category,pred_shares) %>%
+  mutate(palma_ratio_two= d10/(d1+d2+d3+d4)) ->t
+
+g <- ggplot(data=palma_compare, aes(x=palma_ratio_single,
+                                    y=palma_ratio_two))+
+     geom_point()+
+     geom_abline(slope=1,linetype="dashed")+
+     xlim(0,12)+
+     ylim(0,12)
+
+g+scheme_basic
+
+g <- ggplot(data=t, aes(x=(Component2),
+                                    y=palma_ratio_two))+
+  geom_point()+
+  geom_abline(slope=1,linetype="dashed")
+
+g+scheme_basic
+
 
 Wider_data_full %>%
   left_join(data_comp_2 %>% select(country,year,Component2,Component1) %>% distinct()) %>%
@@ -213,7 +244,7 @@ g <- ggplot(data=anomaly_data, aes(x=life_exp, y=Component2))+
 
 g+scheme_basic
 
-Consolidated_data <- read.csv("C:/Projects/Inequality_data_processing/software_repo/GCAM_Income_Distributions/Code/Consolidated_data.csv",
+Consolidated_data <- read.csv("C:/Projects/backup/Consolidated_data.csv",
                               stringsAsFactors = FALSE) %>%
                     select(-Component2) %>%
                      #filter(country %in% c(unique(anomalies$country))) %>%
@@ -239,11 +270,11 @@ Consolidated_data <- read.csv("C:/Projects/Inequality_data_processing/software_r
 tree_data <- Consolidated_data %>% dplyr::select(-population,-incomegroup,-avg_gdp,
                                                  -lagged_comp2,-pred_shares,-country,-iso,-ref,-id)
 
-tree <- rpart("Component2~.",data=tree_data %>% select(-gini) ,method = "anova")
+tree <- rpart("Component1~.",data=tree_data %>% select(-gini) ,method = "anova")
 plot(tree)
 text(tree)
 
-g <- ggplot(data=Consolidated_data, aes(x=Component2, y=lagged_palma_ratio))+
+g <- ggplot(data=Consolidated_data, aes(x=Component1, y=lagged_palma_ratio))+
      geom_point()
 
 g+scheme_basic
@@ -251,13 +282,13 @@ g+scheme_basic
 tree_data %>% arrange(year) ->tree_data
 
 head(tree_data,n=nrow(tree_data)/2)->train_data
-test_model <- lm(" gdp_gr~ Income..net.",data= train_data %>% mutate(capsh= 1-labsh) )
+test_model <- lm(" Component2~ labsh+lagged_ninth_decile+lagged_palma_ratio",data= train_data %>% mutate(capsh= 1-labsh) )
 #train_data$gdp_ppp_pc_usd2011
 summary(test_model)
 BIC(test_model)
 AIC(test_model)
 Consolidated_data %>% filter(year > 2004) %>% arrange(country,year)->test_data
-
+test_data <-
 test_data %>% mutate(pred_Comp2 = -17.12887 +(112.73476*lagged_ninth_decile)+(labsh*1.09037)+(lagged_palma_ratio * -0.36292))->test_data_pred
 m <- lm(data=test_data_pred,formula = "Component2 ~ pred_Comp2")
 
@@ -271,18 +302,20 @@ Consolidated_data$pred_Comp1 <- 7.469648+(Consolidated_data$gdp_ppp_pc_usd2011*-
 
 Consolidated_data %>% filter(year >=2004) %>%
   mutate(Component1 = (gini*29.71708)-11.4815 ,
-         Component2 = -17.77579 + (0.00998*life_exp)+(labsh*0.99944)+(112.35374*lagged_ninth_decile)+(lagged_palma_ratio*-0.34552)) %>%
-  get_deciles_from_components(pc_loadings = pca_stats,
+         Component2 = -17.12887 +(112.73476*lagged_ninth_decile)+(labsh*1.09037)+(lagged_palma_ratio * -0.36292)) %>%
+  get_deciles_from_components(pc_loadings = pc_loading_matrix,
                               center_and_scaler = pc_center_sd,
                               category_col = "Category",
                               grouping_variables = c("country","year"),
                               use_second_comp = TRUE) %>%
-  inner_join(Wider_data_full %>% select(country,year,Income..net.,Category))->final_test_data
+  inner_join(Wider_data_full %>% select(country,year,Income..net.,Category)) %>%
+  mutate(Deciles= factor(Category, levels= c("d1","d2","d3","d4","d5","d6","d7",
+                                             "d8","d9","d10")))->final_test_data
 
 g <- ggplot(data=final_test_data, aes(x=Income..net.*100,y=pred_shares*100)) +
      geom_point(color="grey")+
     geom_abline(slope = 1,linetype="dashed")+
-     facet_wrap(~Category,scales = "free")+
+     facet_wrap(~Deciles,scales = "free")+
      xlab("Actual shares")+
      ylab("Predicted shares")
 

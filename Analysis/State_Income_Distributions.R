@@ -33,7 +33,7 @@ scheme_basic <- theme_bw() +
   theme(legend.position = "bottom")+
   theme(legend.text = element_text(size = 11))+
   theme(legend.title = element_text(size = 11,color = "black",face="bold"))+
-  theme(axis.text.x= element_text(angle=60,hjust=1))+
+  theme(axis.text.x= element_text(angle=0,hjust=0.5))+
   theme(legend.background = element_blank(),
         legend.box.background = element_rect(colour = "black"))+
   theme(legend.key.width=unit(2,"cm"))
@@ -78,11 +78,11 @@ approx_fun <- function(year, value, rule = 1) {
 
 
 #load in state gini csv and use to compute components and shares
-
-state_gini<- read.csv("State_level_GINI.csv", stringsAsFactors = FALSE) %>%
+#using tax adjusted data
+state_gini<- read.csv("acs_net_income_state_gini.csv", stringsAsFactors = FALSE) %>%
   rename(year = year)
 
-state_level_deciles <- read.csv("State_level_GINI.csv", stringsAsFactors = FALSE) %>%
+state_level_deciles <- read.csv("acs_net_income_state_gini.csv", stringsAsFactors = FALSE) %>%
   rename(year = year) %>%
   left_join(Coefficients_US, by = c("year")) %>%
   mutate(Component2 = ifelse(is.na(Component2),
@@ -93,7 +93,7 @@ state_level_deciles <- read.csv("State_level_GINI.csv", stringsAsFactors = FALSE
   get_deciles_from_components(pc_loadings = pc_loadings_matrix,
                               center_and_scaler = pc_center_sd,category_col = "Category",
                               grouping_variables = c("state","year")) %>%
-  adjust_negative_predicted_features(grouping_variables = c("state","year"),min_lowest_feature_val = 0.00001) %>%
+  adjust_negative_predicted_features(grouping_variables = c("state","year"),min_lowest_feature_val = 0.0095) %>%
   mutate(category = Category) %>%
   compute_gini_deciles(inc_col = "pred_shares",
                        grouping_variables = c("state","year")) %>%
@@ -135,7 +135,7 @@ state_level_deciles %>% filter(year==2015) %>%
          Component1 = (gini*29.717083)-11.48152) %>%
   get_deciles_from_components(pc_loadings = pc_loadings_matrix,center_and_scaler = pc_center_sd,category_col = "Category",
                               grouping_variables = c("state","year","sce")) %>%
-  adjust_negative_predicted_features(grouping_variables = c("state","year","sce"),min_lowest_feature_val = 0.00001) %>%
+  adjust_negative_predicted_features(grouping_variables = c("state","year","sce"), min_lowest_feature_val = 0.0095) %>%
   mutate(category= Category) %>%
   compute_gini_deciles(inc_col = "pred_shares",grouping_variables = c("state","year","sce")) %>%
   rename(gini=output_name,shares=pred_shares) %>%
@@ -150,13 +150,12 @@ state_level_forecast %>%
 
 write.csv(consolidated_state_level_data, "US_50_states_DC_net_income_deciles_1917_2050_SSP.csv", row.names = FALSE)
 
+#replace part at beginning with just file for consolidated state level data
+consolidated_state_level_data <- read.csv("US_50_state_DC_net_income_deciles_2011_2100_SSP.csv",
+                                          stringsAsFactors= FALSE, check.names=FALSE) %>% 
+  rename(category = Category,
+         shares = pred_shares)
 
-#add gdp and pop data to state_level_forecast
-# Script to aggregate population by state and year for SSP2, SSP3 & SSP5
-
-##* Data gathered from Jiang et al. pop projections
-#* link: https://zenodo.org/record/3956412#.YogQ2KjMI2z
-#Load data from file
 ##aggregate population across states by year and ssp
 ##load in prebuilt dataframe from csv
 #* if we need original data files we can add the loop back in
@@ -167,27 +166,27 @@ agg_pop <- read.csv("./consolidated_SSP_state_population_projections.csv",
 #Get ratio of gdp per capita between scenarios:
 
 #load in USA GPD and POP projections as objects
-##gdp units billions $
+##gdp units billions 2005 USD$
 #*have to change gdp units to millions to match population
 us_gdp_proj <- read.csv("./SspDb_country_data_2013-06-12.csv"
                         , stringsAsFactors= FALSE, check.names=FALSE) %>%
   filter(VARIABLE=="GDP|PPP", MODEL=="OECD Env-Growth", REGION=="USA") %>%
   gather(YEAR,GDP, starts_with("2")) %>%
-  filter(YEAR >= 2015) %>%
+  filter(YEAR >= 2010) %>%
   filter(YEAR <= 2100) %>%
   mutate(SCEN = substr(SCENARIO,1,4), gdp= GDP*1000) %>%
   select(YEAR,SCEN,gdp) %>%
   arrange(YEAR,SCEN)
-#*if loaded correctly GDP for SSP5 in 2100 is 120517863 (million)
+#*have to deflate GDP to 1990 USD
 
 #load in USA population
-#*years 2015-2100
+#*years 2010-2100
 ## units millions
 us_pop_proj <- read.csv("./SspDb_country_data_2013-06-12.csv"
                         , stringsAsFactors= FALSE, check.names=FALSE) %>%
   filter(VARIABLE=="Population", MODEL=="IIASA-WiC POP", REGION=="USA") %>%
   gather(YEAR,POP, starts_with("2")) %>%
-  filter(YEAR >= 2015) %>%
+  filter(YEAR >= 2010) %>%
   filter(YEAR <= 2100) %>%
   mutate(SCEN = substr(SCENARIO,1,4)) %>%
   select(YEAR,SCEN,POP) %>%
@@ -197,9 +196,9 @@ us_pop_proj <- read.csv("./SspDb_country_data_2013-06-12.csv"
 
 #create ratio (merge objects with left join) to scale GDP per capita for the SSPs
 us_ratio <- left_join(us_gdp_proj, us_pop_proj, by= c("YEAR", "SCEN")) %>%
-  mutate(gdp_per_cap = gdp/POP) %>%
+  mutate(us_gdp_pc = gdp/POP) %>%
   group_by(YEAR) %>%
-  mutate(ratio = gdp_per_cap / gdp_per_cap[SCEN=="SSP2"]) %>%
+  mutate(ratio = us_gdp_pc / us_gdp_pc[SCEN=="SSP2"]) %>%
   arrange(YEAR, SCEN) %>%
   mutate(YEAR = as.numeric(YEAR)) %>%
   rename(US_gdp=gdp, US_pop=POP)
@@ -212,48 +211,45 @@ us_ratio <- left_join(us_gdp_proj, us_pop_proj, by= c("YEAR", "SCEN")) %>%
 ##scale up or down for other SSPs based on ratio
 
 
-#GDP Per Capita by State for SSP2
-#loading gdp per capita baseline scenario
-state_gdp_pc_baseline <- read.csv("./GDP_percapita_US_states.csv"
+#GDP Per Capita by State for baseline (SSP2) from GCAM
+#*based on AEO growth rates
+#* load in yearly gdp per capita data from gcam to get historical gdp per capita for 2011-2015
+
+hist_gcam_gdp_pc <- read.csv("L100.pcGDP_thous90usd_state.csv", skip=1,
+                             stringsAsFactors= FALSE, check.names=FALSE) %>%
+  filter(year %in% 2011:2014)
+#bind 2011-2014 to 5 year timestep gdp per capita projections
+#* units converted to actual terms (from thousand USD)
+gcam_usa_state_gdp_pc <- read.csv("C:/Users/casp111/OneDrive - PNNL/Documents/Projects/GODEEEP/Income_distributions/Data/GCAMUSA_GDPperCapita.csv"
                                   , stringsAsFactors= FALSE, check.names=FALSE) %>%
-  arrange(year, state) %>%
-  rename(YEAR=year, STATE=state)
-#*50 states plus DC
+  select(state,year,value) %>%
+  bind_rows(hist_gcam_gdp_pc) %>% 
+  mutate(gdp_pc_1990usd = value*1000) %>% 
+  filter(year>=2010) %>% 
+  select(-value)
 
-#calculating state gdp per capita growth rates from AEO data
-#then apply them to ratio
-#*AEO gdp pc only grow every 5 years, so only taking 5 year intervals
-state_growth_rate <- state_gdp_pc_baseline %>% filter(grepl("(5|0)$",YEAR)) %>%
-  arrange(STATE,YEAR) %>%
-  group_by(STATE) %>%
-  mutate(gr = (GDP_PC_2011_USD/lag(GDP_PC_2011_USD))) %>%
-  mutate(gr= replace_na(gr,1.0)) %>%
-  ungroup()
-#*should be 918 rows after taking 5 year intervals
-#* gr= 1.0580574 for AK in 2030 if equation works
-#*2015 is first year so calculated growth rate is NA, change to 1 so the calculation with ratio works
+#create df to use to fill in historical years ssps
+df <- data.frame(year = rep(c(2011,2012,2013,2014),5),
+                 SCEN = c("SSP1","SSP2","SSP3","SSP4","SSP5")) %>% 
+  arrange(year,SCEN)
 
+#join national ratio with state gdp per capita
+state_ssp_gdp_pc <- left_join(gcam_usa_state_gdp_pc,us_ratio,by= c("year"="YEAR")) 
 
-#join national ratio with state gdp per capita growth rates
-## national ratio to scale SSPs is the same across states in each year and SSP
-## state growth rates vary across states and years, but are the same in the SSPs
-growth_ratio <- left_join(state_growth_rate, us_ratio, by= c("YEAR")) %>%
-  mutate(growth_ratio= gr*ratio) %>%
-  mutate(gdp_pc= growth_ratio * GDP_PC_2011_USD) %>%
-  select(-Population)
-## have to set SSP2 growth rates/growth ratio to 1 because it is our base data and doesn't need to be scaled
-growth_ratio$growth_ratio[growth_ratio$SCEN=="SSP2"] <- 1.0
-#* AK growth_ratio=1.0657045 in 2045 for SSP3
-#* AK gdp_pc=64454.84 in 2045 for SSP3
+growth_ratio <- state_ssp_gdp_pc %>% 
+  mutate(ratio = ifelse(is.na(ratio),1,ratio)) %>% 
+  select(state,year,SCEN,gdp_pc_1990usd,ratio) %>% 
+  mutate(ssp_gdp_pc = gdp_pc_1990usd*ratio) %>%
+  left_join(df, by=c("year")) %>% 
+  mutate(sce = ifelse(year %in% 2011:2014,SCEN.y,SCEN.x)) %>% 
+  select(-SCEN.x,-SCEN.y)
 
 
 #solve for GDP
 state_gdp <- inner_join(agg_pop, growth_ratio
-                        , by= c("year"="YEAR","sce"="SCEN","state"="STATE")) %>%
-  mutate(gdp = gdp_pc * total_pop) %>%
+                        , by= c("year","sce","state")) %>%
+  mutate(gdp = ssp_gdp_pc * total_pop) %>%
   arrange(year, sce, state)
-#* should have 2754 rows (51 sates*3 SSPs*18 time intervals)
-#* if joined correctly FL gdp is 703586382834 for SSP3 in 2030
 #* gdp in actual dollar units
 #* population in actual units
 
@@ -266,38 +262,35 @@ state_gdp$state_name <- ifelse(state_gdp$state== "DC"
                                , state.name[state_gdp$state])
 
 
-
-#join gdp to shares based on gini
-
-#join 2015 data to state_level_forecast
+#join 2011-2015 data 
 consolidated_state_level_data %>%
-  filter(year==2015) %>%
+  filter(year %in% 2011:2015) %>%
   mutate(sce="SSP1") %>%
   bind_rows(consolidated_state_level_data %>%
-              filter(year==2015) %>%
+              filter(year %in% 2011:2015) %>%
               mutate(sce="SSP2"),
             consolidated_state_level_data %>%
-              filter(year==2015) %>%
+              filter(year %in% 2011:2015) %>%
               mutate(sce="SSP3"),
             consolidated_state_level_data %>%
-              filter(year==2015) %>%
+              filter(year %in% 2011:2015) %>%
               mutate(sce="SSP4"),
             consolidated_state_level_data %>%
-              filter(year==2015) %>%
-              mutate(sce="SSP5")) -> ssp_2015
+              filter(year %in% 2011:2015) %>%
+              mutate(sce="SSP5")) -> ssp_2011_2015
 
 #joining state level gdp and population with income shares by decile
 ## calculating gdp and pop by deciles
-state_level_gdp <- left_join(state_gdp, state_level_forecast %>% bind_rows(ssp_2015),
-                             by= c("state_name"="state", "year", "sce")) %>%
-  select(state, state_name, year, sce, shares,category,total_pop,gdp) %>%
-  mutate(decile_pop = total_pop*0.1, decile_gdp= shares*gdp) %>%
-  group_by(year, sce) %>%
-  mutate(decile_gdp_pc = decile_gdp/decile_pop) %>%
-  arrange(decile_gdp_pc) %>%  #arranging from poorest to richest
-  mutate(cumulative_pop = cumsum(decile_pop),
-         cumulative_gdp= cumsum(decile_gdp)) %>%
-  ungroup()
+state_decile_gdp <- left_join(state_gdp %>% filter(!year==2010) %>% 
+                                select(-ratio,-gdp_pc_1990usd),
+                              consolidated_state_level_data %>% 
+                                filter(!sce=="Historical data") %>% 
+                                bind_rows(ssp_2011_2015),
+                              by= c("state_name"="state", "year", "sce")) %>%
+  select(state, state_name, year, sce,category,shares,total_pop,gdp) %>%
+  mutate(decile_pop = total_pop*0.1,
+         decile_gdp = shares*gdp) %>%
+  mutate(decile_gdp_pc=decile_gdp/decile_pop)
 #*gdp in actual units
 #*income shares calculated using forecasted scaled-down national gini to get the level of inequality
 

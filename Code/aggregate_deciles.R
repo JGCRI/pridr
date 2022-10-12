@@ -64,7 +64,7 @@ data_for_pc <- Wider_data  %>%
                spread(Category,Income..net.) 
                
 
-pc_results <- prcomp(data_for_pc[4:13], center = TRUE)
+pc_results <- prcomp(data_for_pc[4:13], center = TRUE,scale. = TRUE)
 
 pc_data <- as.data.frame(pc_results$x)
 
@@ -74,15 +74,16 @@ pc_loadings <- (pc_results$rotation)
 center <- pc_results$center
 
 data_for_pc$Component1 <- pc_data$PC1
+data_for_pc$Component2 <- pc_data$PC2
 
 if(print_diagnostics){
   
   g <- ggplot(data= data_for_pc, aes(x=gini, y =Component1 ))+
        geom_point(alpha =0.6)+
        xlab("GINI coefficient")+
-       ylab("Component values")+
-       ggtitle("Comparison of the principal component and GINI coefficient across all countries for all years")+
-    geom_abline(slope=0.872240, color= "blue", linetype = "dashed",intercept=-0.337000, size=1.2)
+       ylab("PC1 values")+
+       ggtitle("Comparison of the PC1 vs GINI all regions")
+    #geom_abline(slope=1, color= "blue", linetype = "dashed", size=1.2)
   
   
   g + scheme_basic

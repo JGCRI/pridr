@@ -38,7 +38,7 @@ scheme_basic <- theme_bw() +
         legend.box.background = element_rect(colour = "black"))+
   theme(legend.key.width=unit(2,"cm"))
 
-setwd("../../Input_Data/")
+setwd("./Input_Data/")
 
 #income deciles data
 
@@ -151,105 +151,126 @@ state_level_forecast %>%
 write.csv(consolidated_state_level_data, "US_50_states_DC_net_income_deciles_1917_2050_SSP.csv", row.names = FALSE)
 
 #replace part at beginning with just file for consolidated state level data
-consolidated_state_level_data <- read.csv("US_50_state_DC_net_income_deciles_2011_2100_SSP.csv",
-                                          stringsAsFactors= FALSE, check.names=FALSE) %>% 
+#* this is not in the repository yet?
+consolidated_state_level_data <- read.csv("~/Projects/GODEEEP/Income_distributions/Data/US_50_state_DC_net_income_deciles_2011_2100_SSP.csv",
+                                          stringsAsFactors= FALSE, check.names=FALSE) %>%
   rename(category = Category,
          shares = pred_shares)
 
-##aggregate population across states by year and ssp
-##load in prebuilt dataframe from csv
+#aggregate population across states by year and ssp
+#* load in prebuilt dataframe from csv
 #* if we need original data files we can add the loop back in
-agg_pop <- read.csv("./consolidated_SSP_state_population_projections.csv",
+agg_pop <- read.csv("consolidated_SSP_state_population_projections.csv",
 			stringsAsFactors= FALSE, check.names=FALSE)
 
 
-#Get ratio of gdp per capita between scenarios:
+#Get ratio of gdp per capita between scenarios for scaling
+#* will apply ratio for each year and scenario to state data for same scenario and year
+#* SSP2 is considered our baseline GDP per capita
+
 
 #load in USA GPD and POP projections as objects
 ##gdp units billions 2005 USD$
 #*have to change gdp units to millions to match population
-us_gdp_proj <- read.csv("./SspDb_country_data_2013-06-12.csv"
-                        , stringsAsFactors= FALSE, check.names=FALSE) %>%
-  filter(VARIABLE=="GDP|PPP", MODEL=="OECD Env-Growth", REGION=="USA") %>%
+#* gdp_deflator(1990, 2012) = 0.7258882
+us_gdp <- read.csv("SspDb_country_data_2013-06-12.csv"
+                   , stringsAsFactors= FALSE, check.names=FALSE) %>%
+  filter(VARIABLE=="GDP|PPP", REGION=="USA") %>%
   gather(YEAR,GDP, starts_with("2")) %>%
   filter(YEAR >= 2010) %>%
   filter(YEAR <= 2100) %>%
-  mutate(SCEN = substr(SCENARIO,1,4), gdp= GDP*1000) %>%
-  select(YEAR,SCEN,gdp) %>%
-  arrange(YEAR,SCEN)
-#*have to deflate GDP to 1990 USD
+  mutate(SCEN = substr(SCENARIO,1,4), gdp= GDP*0.7258882*1000,
+         YEAR = as.numeric(YEAR)) %>%
+  select(YEAR,SCEN,MODEL,gdp) %>%
+  filter(SCEN %in% c("SSP2","SSP3","SSP5"))
 
 #load in USA population
 #*years 2010-2100
 ## units millions
-us_pop_proj <- read.csv("./SspDb_country_data_2013-06-12.csv"
-                        , stringsAsFactors= FALSE, check.names=FALSE) %>%
-  filter(VARIABLE=="Population", MODEL=="IIASA-WiC POP", REGION=="USA") %>%
+us_pop <- read.csv("SspDb_country_data_2013-06-12.csv"
+                   , stringsAsFactors= FALSE, check.names=FALSE) %>%
+  filter(VARIABLE=="Population",REGION=="USA",MODEL %in% us_gdp$MODEL) %>%
   gather(YEAR,POP, starts_with("2")) %>%
   filter(YEAR >= 2010) %>%
   filter(YEAR <= 2100) %>%
-  mutate(SCEN = substr(SCENARIO,1,4)) %>%
-  select(YEAR,SCEN,POP) %>%
-  arrange(YEAR,SCEN)
-#*if loaded correctly population for SSP4 in 2100 is ~364.5837 (million)
+  mutate(SCEN = substr(SCENARIO,1,4),
+         YEAR = as.numeric(YEAR)) %>%
+  select(YEAR,SCEN,MODEL,POP) %>%
+  filter(SCEN %in% c("SSP2","SSP3","SSP5"))
 
 
-#create ratio (merge objects with left join) to scale GDP per capita for the SSPs
-us_ratio <- left_join(us_gdp_proj, us_pop_proj, by= c("YEAR", "SCEN")) %>%
-  mutate(us_gdp_pc = gdp/POP) %>%
-  group_by(YEAR) %>%
-  mutate(ratio = us_gdp_pc / us_gdp_pc[SCEN=="SSP2"]) %>%
-  arrange(YEAR, SCEN) %>%
-  mutate(YEAR = as.numeric(YEAR)) %>%
-  rename(US_gdp=gdp, US_pop=POP)
-#*if joined correctly ratio is ~0.9942036 for SSP3 in 2030
+#scale GDP per Capita for the SSPs
+#* constant turns defualt options on or off
+#* default SSPs: SSP2-OECD, SSP3-PIK, SSP5-OECD
+#* when TRUE only default options are used for deciles (one set of projections)
+#* when FALSE all SSP models are used to produce three sets of decile projections (set of projections for each model)
+#* construct 5 year average annual growth rate for comparision between SSP Models
 
+SCALE_TO_DEFAULT=TRUE
 
-
-## will apply ratio for each year and scenario to state data for same scenario and year
-## have baseline SSP2 GDP per capita data
-##scale up or down for other SSPs based on ratio
+if(SCALE_TO_DEFAULT){
+   us_ratio <- left_join(us_gdp, us_pop, by= c("YEAR", "SCEN","MODEL")) %>%
+    mutate(us_gdp_pc = gdp/POP) %>%
+    group_by(YEAR,MODEL) %>%
+    mutate(ratio = us_gdp_pc / us_gdp_pc[SCEN=="SSP2"]) %>%
+    ungroup() %>%
+    group_by(MODEL,SCEN) %>%
+    mutate(five_yr_gr =((us_gdp_pc/lag(us_gdp_pc))^(1/5)-1)*100) %>%
+    ungroup() %>%
+    mutate(YEAR = as.numeric(YEAR)) %>%
+    rename(US_gdp=gdp, US_pop=POP) %>%
+    filter(MODEL=="OECD Env-Growth" & SCEN %in% c("SSP2","SSP5")|
+             MODEL=="PIK GDP-32" & SCEN=="SSP3")}else{
+               us_ratio <- left_join(us_gdp, us_pop, by= c("YEAR", "SCEN","MODEL")) %>%
+                 mutate(us_gdp_pc = gdp/POP) %>%
+                 group_by(YEAR,MODEL) %>%
+                 mutate(ratio = us_gdp_pc / us_gdp_pc[SCEN=="SSP2"]) %>%
+                 ungroup() %>%
+                 group_by(MODEL,SCEN) %>%
+                 mutate(five_yr_gr =((us_gdp_pc/lag(us_gdp_pc))^(1/5)-1)*100) %>%
+                 ungroup() %>%
+                 mutate(YEAR = as.numeric(YEAR)) %>%
+                 rename(US_gdp=gdp, US_pop=POP)
+             }
 
 
 #GDP Per Capita by State for baseline (SSP2) from GCAM
-#*based on AEO growth rates
+#* based on AEO growth rates
 #* load in yearly gdp per capita data from gcam to get historical gdp per capita for 2011-2015
-
-hist_gcam_gdp_pc <- read.csv("L100.pcGDP_thous90usd_state.csv", skip=1,
+hist_gcam_gdp_pc <- read.csv("GCAMUSA_hist_pcGDP_thous90usd_state.csv", skip=1,
                              stringsAsFactors= FALSE, check.names=FALSE) %>%
   filter(year %in% 2011:2014)
 #bind 2011-2014 to 5 year timestep gdp per capita projections
 #* units converted to actual terms (from thousand USD)
-gcam_usa_state_gdp_pc <- read.csv("C:/Users/casp111/OneDrive - PNNL/Documents/Projects/GODEEEP/Income_distributions/Data/GCAMUSA_GDPperCapita.csv"
+gcam_usa_state_gdp_pc <- read.csv("GCAMUSA_GDPperCapita.csv"
                                   , stringsAsFactors= FALSE, check.names=FALSE) %>%
   select(state,year,value) %>%
-  bind_rows(hist_gcam_gdp_pc) %>% 
-  mutate(gdp_pc_1990usd = value*1000) %>% 
-  filter(year>=2010) %>% 
+  bind_rows(hist_gcam_gdp_pc) %>%
+  mutate(gdp_pc_1990usd = value*1000) %>%
+  filter(year>=2010) %>%
   select(-value)
 
 #create df to use to fill in historical years ssps
-df <- data.frame(year = rep(c(2011,2012,2013,2014),5),
-                 SCEN = c("SSP1","SSP2","SSP3","SSP4","SSP5")) %>% 
-  arrange(year,SCEN)
+df <- data.frame(year = rep(c(2011,2012,2013,2014),9),
+                 SCEN = rep(c("SSP2","SSP3","SSP5"),3)) %>%
+  arrange(year,SCEN) %>%
+  mutate(MODEL = rep(c("IIASA GDP","OECD Env-Growth","PIK GDP-32"),12))
 
 #join national ratio with state gdp per capita
-state_ssp_gdp_pc <- left_join(gcam_usa_state_gdp_pc,us_ratio,by= c("year"="YEAR")) 
+state_ssp_gdp_pc <- left_join(gcam_usa_state_gdp_pc,us_ratio,by= c("year"="YEAR"))
 
-growth_ratio <- state_ssp_gdp_pc %>% 
-  mutate(ratio = ifelse(is.na(ratio),1,ratio)) %>% 
-  select(state,year,SCEN,gdp_pc_1990usd,ratio) %>% 
+growth_ratio <- state_ssp_gdp_pc %>%
+  mutate(ratio = ifelse(is.na(ratio),1,ratio)) %>%
   mutate(ssp_gdp_pc = gdp_pc_1990usd*ratio) %>%
-  left_join(df, by=c("year")) %>% 
-  mutate(sce = ifelse(year %in% 2011:2014,SCEN.y,SCEN.x)) %>% 
-  select(-SCEN.x,-SCEN.y)
-
+  left_join(df %>% filter(MODEL %in% state_ssp_gdp_pc$MODEL), by=c("year")) %>%
+  mutate(sce = ifelse(year %in% 2011:2014,SCEN.y,SCEN.x),
+         MODEL = ifelse(year %in% 2011:2014,MODEL.y,MODEL.x)) %>%
+  select(-SCEN.x,-SCEN.y,-MODEL.y,-MODEL.x)
 
 #solve for GDP
 state_gdp <- inner_join(agg_pop, growth_ratio
                         , by= c("year","sce","state")) %>%
-  mutate(gdp = ssp_gdp_pc * total_pop) %>%
-  arrange(year, sce, state)
+  mutate(gdp = ssp_gdp_pc * total_pop)
 #* gdp in actual dollar units
 #* population in actual units
 
@@ -261,8 +282,7 @@ state_gdp$state_name <- ifelse(state_gdp$state== "DC"
                                , "District of Columbia"
                                , state.name[state_gdp$state])
 
-
-#join 2011-2015 data 
+#join 2011-2015 data
 consolidated_state_level_data %>%
   filter(year %in% 2011:2015) %>%
   mutate(sce="SSP1") %>%
@@ -280,14 +300,14 @@ consolidated_state_level_data %>%
               mutate(sce="SSP5")) -> ssp_2011_2015
 
 #joining state level gdp and population with income shares by decile
-## calculating gdp and pop by deciles
-state_decile_gdp <- left_join(state_gdp %>% filter(!year==2010) %>% 
+#* calculating gdp and pop by deciles
+state_decile_gdp <- left_join(state_gdp %>% filter(!year==2010) %>%
                                 select(-ratio,-gdp_pc_1990usd),
-                              consolidated_state_level_data %>% 
-                                filter(!sce=="Historical data") %>% 
+                              consolidated_state_level_data %>%
+                                filter(!sce=="Historical data") %>%
                                 bind_rows(ssp_2011_2015),
                               by= c("state_name"="state", "year", "sce")) %>%
-  select(state, state_name, year, sce,category,shares,total_pop,gdp) %>%
+  select(state,state_name,year,MODEL,sce,category,shares,total_pop,gdp) %>%
   mutate(decile_pop = total_pop*0.1,
          decile_gdp = shares*gdp) %>%
   mutate(decile_gdp_pc=decile_gdp/decile_pop)

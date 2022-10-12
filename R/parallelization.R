@@ -15,7 +15,11 @@ create_cores <- function(num_cores=NULL){
     n.cores,
     type = "PSOCK")
 
-  clusterExport( my.cluster, c('compute_lognormal_country', 'compute_lognormal_dist','erfinv','%>%','rename','mutate','distinct','select','ungroup'
-                       ,'group_by','arrange','if_else'))
+  clusterExport(my.cluster,c('compute_lognormal_country', 'compute_lognormal_dist','erfinv','%>%','rename','mutate','distinct','select','ungroup'
+                       ,'group_by','arrange','if_else','adjust_negative_predicted_features','get_deciles_from_components',
+                       'gather','spread','pc_center_sd','pc_loading_matrix','left_join','compute_PC_model_components','compute_palma_ratio','as.name','PC_model','filter'),envir=globalenv())
+
+  clusterEvalQ(cl = my.cluster,expr = library(pridr))
+
   return(my.cluster)
 }

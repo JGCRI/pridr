@@ -83,12 +83,19 @@ package, prepared for IAMC 2022</h1>
 
     
     
-<div id="example-1-generate-deciles-using-lognormal-approach" class="section level3">
+<div id="examples" class="section level1">
+<h1 class="hasAnchor">
+<a href="#examples" class="anchor"></a>Examples</h1>
+<div id="example-1-generate-deciles-using-lognormal-approach" class="section level2">
+<h2 class="hasAnchor">
+<a href="#example-1-generate-deciles-using-lognormal-approach" class="anchor"></a>Example 1: Generate deciles using lognormal approach</h2>
+<div id="we-load-a-sample-dataset-with-gini-coefficients-and-mean-income-by-country-year-and-derive-the-income-distribution-deciles-using-the-lognormal-based-approach-" class="section level3">
 <h3 class="hasAnchor">
-<a href="#example-1-generate-deciles-using-lognormal-approach" class="anchor"></a>Example 1: Generate deciles using lognormal approach</h3>
+<a href="#we-load-a-sample-dataset-with-gini-coefficients-and-mean-income-by-country-year-and-derive-the-income-distribution-deciles-using-the-lognormal-based-approach-" class="anchor"></a><code>We load a sample dataset with GINI coefficients and mean income (by country, year) and derive the income distribution (deciles) using the lognormal based approach.</code>
+</h3>
 <div id="load-a-sample-dataset" class="section level4">
 <h4 class="hasAnchor">
-<a href="#load-a-sample-dataset" class="anchor"></a><code>Load a sample dataset</code>
+<a href="#load-a-sample-dataset" class="anchor"></a><code>1. Load a sample dataset</code>
 </h4>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/utils/read.table.html">read.csv</a></span><span class="op">(</span><span class="st">"Input_Data/Wider_aggregated_deciles.csv"</span>, stringsAsFactors <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span> <span class="op">%&gt;%</span>
@@ -224,7 +231,7 @@ Historical data
 </div>
 <div id="use-the-lognormal-model-on-this-dataset" class="section level4">
 <h4 class="hasAnchor">
-<a href="#use-the-lognormal-model-on-this-dataset" class="anchor"></a><code>Use the lognormal model on this dataset</code>
+<a href="#use-the-lognormal-model-on-this-dataset" class="anchor"></a><code>2. Use the lognormal model on this dataset</code>
 </h4>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="va">start_time</span><span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Sys.time.html">Sys.time</a></span><span class="op">(</span><span class="op">)</span>
@@ -361,10 +368,15 @@ Log normal based downscaling (using country GINI)
 </table>
 </div>
 </div>
-<div id="example-2-generate-lognormal-density-dist-for-an-abritary-set-of-parameters" class="section level3">
-<h3 class="hasAnchor">
+</div>
+<div id="example-2-generate-lognormal-density-dist-for-an-abritary-set-of-parameters" class="section level2">
+<h2 class="hasAnchor">
 <a href="#example-2-generate-lognormal-density-dist-for-an-abritary-set-of-parameters" class="anchor"></a>Example 2: Generate lognormal density dist (For an abritary set of
-parameters)</h3>
+parameters)</h2>
+<div id="here-we-generate-lognormal-density-distribution-from-arbritary-values-of-the-gini-and-mean-income-" class="section level3">
+<h3 class="hasAnchor">
+<a href="#here-we-generate-lognormal-density-distribution-from-arbritary-values-of-the-gini-and-mean-income-" class="anchor"></a><code>Here, we generate lognormal density distribution from arbritary values of the GINI and mean income.</code>
+</h3>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="va">density_dist_1</span> <span class="op">&lt;-</span> <span class="fu">compute_lognormal_dist</span><span class="op">(</span>mean_income <span class="op">=</span> <span class="fl">15</span>,gini<span class="op">=</span><span class="fl">0.6</span><span class="op">)</span> <span class="op">%&gt;%</span> <span class="fu">mutate</span><span class="op">(</span>gini<span class="op">=</span><span class="fu"><a href="https://rdrr.io/r/base/character.html">as.character</a></span><span class="op">(</span><span class="fl">0.6</span><span class="op">)</span><span class="op">)</span>
 <span class="va">density_dist_2</span> <span class="op">&lt;-</span> <span class="fu">compute_lognormal_dist</span><span class="op">(</span>mean_income <span class="op">=</span> <span class="fl">15</span>,gini<span class="op">=</span><span class="fl">0.3</span><span class="op">)</span><span class="op">%&gt;%</span> <span class="fu">mutate</span><span class="op">(</span>gini<span class="op">=</span><span class="fu"><a href="https://rdrr.io/r/base/character.html">as.character</a></span><span class="op">(</span><span class="fl">0.3</span><span class="op">)</span><span class="op">)</span>
@@ -376,13 +388,18 @@ parameters)</h3>
 <span class="va">g</span><span class="op">+</span><span class="va">scheme_basic</span></code></pre></div>
 <p><img src="pridr%20tutorial%20for%20IAMC_files/figure-html/unnamed-chunk-3-1.png" width="700"></p>
 </div>
-<div id="example-3--use-the-pca-based-model" class="section level3">
+</div>
+<div id="example-3--use-the-pca-based-model" class="section level2">
+<h2 class="hasAnchor">
+<a href="#example-3--use-the-pca-based-model" class="anchor"></a>Example 3. Use the PCA based model</h2>
+<div id="here-we-demonstrate-the-usage-of-the-pca-based-model--we-pass-a-dataset-of-required-variables-step-1-below-to-thepc_modelfunction-step-2-below--note-that-the-function-parameters-are-stored-in-memory-for-pridr-and-will-not-change-unless-the-user-specifically-resets-parameters-using-newer-data-for-example-" class="section level3">
 <h3 class="hasAnchor">
-<a href="#example-3--use-the-pca-based-model" class="anchor"></a>Example 3. Use the PCA based model</h3>
-<div id="compile-data-this-is-the-dataset-format-that-needs-to-be-passed-to-the-function" class="section level4">
-<h4 class="hasAnchor">
-<a href="#compile-data-this-is-the-dataset-format-that-needs-to-be-passed-to-the-function" class="anchor"></a><code>Compile data (This is the dataset format that needs to be passed to the function)</code>
-</h4>
+<a href="#here-we-demonstrate-the-usage-of-the-pca-based-model--we-pass-a-dataset-of-required-variables-step-1-below-to-thepc_modelfunction-step-2-below--note-that-the-function-parameters-are-stored-in-memory-for-pridr-and-will-not-change-unless-the-user-specifically-resets-parameters-using-newer-data-for-example-" class="anchor"></a><code>Here , we demonstrate the usage of the PCA based model. We pass a dataset of required variables (Step 1 below) to the</code>PC_model<code>function (Step 2 below). Note that the function parameters are stored in memory for pridr and will not change unless the user specifically resets parameters (using newer data for example).</code>
+</h3>
+<div id="compile-data-this-is-the-dataset-format-that-needs-to-be-passed-to-the-function" class="section level5">
+<h5 class="hasAnchor">
+<a href="#compile-data-this-is-the-dataset-format-that-needs-to-be-passed-to-the-function" class="anchor"></a><code>1. Compile data (This is the dataset format that needs to be passed to the function)</code>
+</h5>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="va">sample_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/utils/read.table.html">read.csv</a></span><span class="op">(</span><span class="st">"Input_Data/sample_data.csv"</span><span class="op">)</span>
 <span class="fu">knitr</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/knitr/man/kable.html">kable</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html">head</a></span><span class="op">(</span><span class="va">sample_data</span><span class="op">)</span>, format <span class="op">=</span> <span class="st">"html"</span><span class="op">)</span></code></pre></div>
@@ -596,7 +613,7 @@ Historical data
 </div>
 <div id="run-pc-model-on-this-dataset" class="section level4">
 <h4 class="hasAnchor">
-<a href="#run-pc-model-on-this-dataset" class="anchor"></a><code>Run PC model on this dataset</code>
+<a href="#run-pc-model-on-this-dataset" class="anchor"></a><code>2. Run PC model on this dataset</code>
 </h4>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="va">start_time</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Sys.time.html">Sys.time</a></span><span class="op">(</span><span class="op">)</span>
@@ -765,7 +782,7 @@ d1
 </div>
 <div id="plot-results" class="section level4">
 <h4 class="hasAnchor">
-<a href="#plot-results" class="anchor"></a><code>Plot results</code>
+<a href="#plot-results" class="anchor"></a><code>3. Plot results</code>
 </h4>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="va">g</span> <span class="op">&lt;-</span> <span class="fu">ggplot</span><span class="op">(</span>data<span class="op">=</span><span class="va">PC_model_results</span> <span class="op">%&gt;%</span> <span class="fu"><a href="https://rdrr.io/r/stats/filter.html">filter</a></span><span class="op">(</span><span class="va">year</span> <span class="op">%in%</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="fl">2010</span><span class="op">:</span><span class="fl">2015</span><span class="op">)</span><span class="op">)</span> ,<span class="fu">aes</span><span class="op">(</span>x<span class="op">=</span><span class="fu"><a href="https://rdrr.io/r/base/factor.html">factor</a></span><span class="op">(</span><span class="va">Category</span>,levels <span class="op">=</span><span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="st">'d1'</span>,<span class="st">'d2'</span>,<span class="st">'d3'</span>,<span class="st">'d4'</span>,
@@ -775,8 +792,18 @@ d1
      <span class="fu">ggtitle</span><span class="op">(</span><span class="st">"Income distributions in the US in multiple years  "</span><span class="op">)</span>
 
 <span class="va">g</span><span class="op">+</span><span class="va">scheme_basic</span><span class="op">+</span><span class="fu">theme</span><span class="op">(</span>legend.position <span class="op">=</span> <span class="st">"right"</span><span class="op">)</span></code></pre></div>
-<p><img src="pridr%20tutorial%20for%20IAMC_files/figure-html/unnamed-chunk-6-1.png" width="700">
-### Example 4: Generate GINI for a given set of deciles</p>
+<p><img src="pridr%20tutorial%20for%20IAMC_files/figure-html/unnamed-chunk-6-1.png" width="700"></p>
+</div>
+</div>
+</div>
+<div id="example-4--generate-gini-coefficients-for-a-given-set-of-deciles" class="section level2">
+<h2 class="hasAnchor">
+<a href="#example-4--generate-gini-coefficients-for-a-given-set-of-deciles" class="anchor"></a>Example 4. Generate GINI coefficients for a given set of
+deciles</h2>
+<div id="pridrallows-users-to-recalculate-summary-metrics-such-as-the-gini-coefficient-from-deciles-" class="section level3">
+<h3 class="hasAnchor">
+<a href="#pridrallows-users-to-recalculate-summary-metrics-such-as-the-gini-coefficient-from-deciles-" class="anchor"></a><code></code>pridr<code>allows users to recalculate summary metrics such as the GINI coefficient from deciles.</code>
+</h3>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="va">gini_data</span> <span class="op">&lt;-</span><span class="fu">compute_gini_deciles</span><span class="op">(</span><span class="va">PC_model_results</span> <span class="op">%&gt;%</span> <span class="fu">mutate</span><span class="op">(</span>category<span class="op">=</span><span class="va">Category</span><span class="op">)</span>, inc_col <span class="op">=</span> <span class="st">"pred_shares"</span>,grouping_variables <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="st">"country"</span>,<span class="st">"year"</span><span class="op">)</span><span class="op">)</span> <span class="op">%&gt;%</span> <span class="fu">rename</span><span class="op">(</span>gini<span class="op">=</span><span class="va">output_name</span><span class="op">)</span>
 <span class="fu">knitr</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/knitr/man/kable.html">kable</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/head.html">head</a></span><span class="op">(</span><span class="va">gini_data</span><span class="op">)</span>, format <span class="op">=</span> <span class="st">"html"</span><span class="op">)</span></code></pre></div>
@@ -1010,13 +1037,17 @@ d1
 </table>
 </div>
 </div>
-<div id="example-5--aggregate-deciles-to-a-region-here-we-aggregate-country-level-distributions-to-a-global-distribution" class="section level3">
-<h3 class="hasAnchor">
+<div id="example-5--aggregate-deciles-to-a-region-here-we-aggregate-country-level-distributions-to-a-global-distribution" class="section level2">
+<h2 class="hasAnchor">
 <a href="#example-5--aggregate-deciles-to-a-region-here-we-aggregate-country-level-distributions-to-a-global-distribution" class="anchor"></a>Example 5. Aggregate deciles to a region (Here we aggregate country
-level distributions to a global distribution)</h3>
+level distributions to a global distribution)</h2>
+<div id="users-can-also-aggregate-the-income-distribution-to-a-regional-or-global-scale-based-on-arbritary-mapping-of-isos-to-regions--here-we-aggregate-all-income-distributions-at-the-country-level-to-a-global-income-distribution-in-2015-" class="section level3">
+<h3 class="hasAnchor">
+<a href="#users-can-also-aggregate-the-income-distribution-to-a-regional-or-global-scale-based-on-arbritary-mapping-of-isos-to-regions--here-we-aggregate-all-income-distributions-at-the-country-level-to-a-global-income-distribution-in-2015-" class="anchor"></a><code>Users can also aggregate the income distribution to a regional or global scale based on arbritary mapping of ISOs to regions. Here, we aggregate all income distributions at the country level to a global income distribution in 2015.</code>
+</h3>
 <div id="compile-data" class="section level4">
 <h4 class="hasAnchor">
-<a href="#compile-data" class="anchor"></a><code>Compile data</code>
+<a href="#compile-data" class="anchor"></a><code>1. Compile data</code>
 </h4>
 <div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="fu"><a href="https://rdrr.io/r/utils/read.table.html">read.csv</a></span><span class="op">(</span><span class="st">"Input_Data/Wider_aggregated_deciles.csv"</span>, stringsAsFactors <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span> <span class="op">%&gt;%</span>
@@ -1190,7 +1221,7 @@ Global
 </div>
 <div id="aggregate-the-distribution" class="section level4">
 <h4 class="hasAnchor">
-<a href="#aggregate-the-distribution" class="anchor"></a><code>Aggregate the distribution</code>
+<a href="#aggregate-the-distribution" class="anchor"></a><code>2. Aggregate the distribution</code>
 </h4>
 <div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="fu">aggregate_country_deciles_to_regions</span><span class="op">(</span><span class="va">ISO_data</span>,
@@ -1429,7 +1460,7 @@ d6
 </div>
 <div id="plot-the-distributions" class="section level4">
 <h4 class="hasAnchor">
-<a href="#plot-the-distributions" class="anchor"></a><code>Plot the distributions</code>
+<a href="#plot-the-distributions" class="anchor"></a><code>3. Plot the distributions</code>
 </h4>
 <div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="va">g</span> <span class="op">&lt;-</span> <span class="fu">ggplot</span><span class="op">(</span>data<span class="op">=</span><span class="va">ISO_data</span>,<span class="fu">aes</span><span class="op">(</span>x<span class="op">=</span><span class="fu"><a href="https://rdrr.io/r/base/factor.html">factor</a></span><span class="op">(</span><span class="va">Category</span>,levels <span class="op">=</span><span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="st">'d1'</span>,<span class="st">'d2'</span>,<span class="st">'d3'</span>,<span class="st">'d4'</span>,
@@ -1447,11 +1478,15 @@ d6
 <p><img src="pridr%20tutorial%20for%20IAMC_files/figure-html/unnamed-chunk-10-1.png" width="700"></p>
 </div>
 </div>
+</div>
+</div>
   </div>
 
   <div class="col-md-3 hidden-xs hidden-sm" id="pkgdown-sidebar">
 
-      </div>
+        <nav id="toc" data-toggle="toc"><h2 data-toc-skip>Contents</h2>
+    </nav>
+</div>
 
 </div>
 

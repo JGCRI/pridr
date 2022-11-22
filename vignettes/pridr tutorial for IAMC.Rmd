@@ -50,11 +50,13 @@ scheme_basic <- theme_bw() +
   theme(legend.background = element_blank(),
         legend.box.background = element_rect(colour = "black"))
 ```
+# Examples
 
+## Example 1: Generate deciles using lognormal approach
 
-### Example 1: Generate deciles using lognormal approach
+### `We load a sample dataset with GINI coefficients and mean income (by country, year) and derive the income distribution (deciles) using the lognormal based approach.`
 
-#### `Load a sample dataset`
+#### `1. Load a sample dataset`
 ```{r, warning=FALSE, message=FALSE}
 
 read.csv("Input_Data/Wider_aggregated_deciles.csv", stringsAsFactors = FALSE) %>%
@@ -66,7 +68,7 @@ read.csv("Input_Data/Wider_aggregated_deciles.csv", stringsAsFactors = FALSE) %>
 knitr::kable(head(data_for_lognorm), format = "html")
 ```
 
-#### `Use the lognormal model on this dataset`
+#### `2. Use the lognormal model on this dataset`
 ```{r, warning=FALSE, message=FALSE,echo=TRUE}
 start_time= Sys.time()
 compute_deciles_lognormal(data_for_lognorm)->lognormal_model
@@ -79,7 +81,10 @@ knitr::kable(head(lognormal_model), format = "html")
 
 ```
 
-### Example 2: Generate lognormal density dist (For an abritary set of parameters)
+## Example 2: Generate lognormal density dist (For an abritary set of parameters)
+
+### `Here, we generate lognormal density distribution from arbritary values of the GINI and mean income.`
+
 ```{r, warning=FALSE, message=FALSE}
 
 density_dist_1 <- compute_lognormal_dist(mean_income = 15,gini=0.6) %>% mutate(gini=as.character(0.6))
@@ -93,15 +98,17 @@ g+scheme_basic
 
 ```
 
-### Example 3. Use the PCA based model 
+## Example 3. Use the PCA based model 
 
-#### `Compile data (This is the dataset format that needs to be passed to the function)`
+### `Here , we demonstrate the usage of the PCA based model. We pass a dataset of required variables (Step 1 below) to the `PC_model` function (Step 2 below). Note that the function parameters are stored in memory for pridr and will not change unless the user specifically resets parameters (using newer data for example).`
+
+##### `1. Compile data (This is the dataset format that needs to be passed to the function)`
 ```{r, warning=FALSE, message=FALSE}
 sample_data <- read.csv("Input_Data/sample_data.csv")
 knitr::kable(head(sample_data), format = "html")
 
 ```
-#### `Run PC model on this dataset`
+#### `2. Run PC model on this dataset`
 ```{r, warning=FALSE, message=FALSE}
 start_time <- Sys.time()
 
@@ -114,7 +121,7 @@ knitr::kable(head(PC_model_results), format = "html")
 
 
 ```
-#### `Plot results`
+#### `3. Plot results`
 ```{r, warning=FALSE, message=FALSE}
 g <- ggplot(data=PC_model_results %>% filter(year %in% c(2010:2015)) ,aes(x=factor(Category,levels =c('d1','d2','d3','d4',
   'd5','d6','d7','d8',                                                                                'd9','d10')),y=pred_shares,color=year,group=year))+
@@ -125,14 +132,22 @@ g <- ggplot(data=PC_model_results %>% filter(year %in% c(2010:2015)) ,aes(x=fact
 g+scheme_basic+theme(legend.position = "right")
     
 ```
-### Example 4: Generate GINI for a given set of deciles
+
+## Example 4. Generate GINI coefficients for a given set of deciles
+
+### ` `pridr` allows users to recalculate summary metrics such as the GINI coefficient from deciles.`
+
 ```{r, warning=FALSE, message=FALSE}
 gini_data <-compute_gini_deciles(PC_model_results %>% mutate(category=Category), inc_col = "pred_shares",grouping_variables = c("country","year")) %>% rename(gini=output_name)
 knitr::kable(head(gini_data), format = "html")
 ```
-### Example 5. Aggregate deciles to a region (Here we aggregate country level distributions to a global distribution)
 
-#### `Compile data`
+## Example 5. Aggregate deciles to a region (Here we aggregate country level distributions to a global distribution)
+
+### `Users can also aggregate the income distribution to a regional or global scale based on arbritary mapping of ISOs to regions. Here, we aggregate all income distributions at the country level to a global income distribution in 2015.`
+
+
+#### `1. Compile data`
 ```{r, warning=FALSE, message=FALSE}
 read.csv("Input_Data/Wider_aggregated_deciles.csv", stringsAsFactors = FALSE) %>%
   select(country, year, gdp_ppp_pc_usd2011, population,Income..net.,Category) %>% filter(year%in% c(2015)) %>% mutate(GCAM_region_ID="Global")->ISO_data
@@ -140,7 +155,7 @@ knitr::kable(head(ISO_data), format = "html")
 
 ```
 
-#### `Aggregate the distribution`
+#### `2. Aggregate the distribution`
 ```{r, warning=FALSE, message=FALSE}
 
 
@@ -151,7 +166,7 @@ aggregate_country_deciles_to_regions(ISO_data,
 knitr::kable(head(agg_data), format = "html")
 ```
 
-#### `Plot the distributions`
+#### `3. Plot the distributions`
 
 ```{r, warning=FALSE, message=FALSE}
 g <- ggplot(data=ISO_data,aes(x=factor(Category,levels =c('d1','d2','d3','d4',

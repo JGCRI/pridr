@@ -790,8 +790,8 @@ PC_model <- function(df,grouping_variables=c("country","year"),
   print("Now generating deciles")
 
   t_data <- rbindlist(t) %>%
-    get_deciles_from_components(use_second_comp = TRUE,grouping_variables = c("country","year","sce")) %>%
-    adjust_negative_predicted_features(grouping_variables = c("country","year","sce"))
+    get_deciles_from_components(use_second_comp = TRUE,grouping_variables = grouping_variables) %>%
+    adjust_negative_predicted_features(grouping_variables = grouping_variables)
 
   return(t_data)
 

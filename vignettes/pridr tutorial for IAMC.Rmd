@@ -1,0 +1,170 @@
+---
+title: "Tutorial for `pridr` software package, prepared for IAMC 2022"
+Authors: Kanishka B. Narayan, Brian C. O'Neill, Stephanie Waldhoff, Claudia Tebaldi
+  & Kelly C. Casper
+output:
+   html_document:
+    toc: true
+    toc_float: true
+    toc_collapsed: true
+    #toc_depth: 3
+    #number_sections: True
+    theme: cosmo
+    #inverse: true
+
+---
+
+
+```{r setup, include=FALSE, warning=FALSE, message=FALSE}
+##LOAD our package
+library(pridr)
+
+
+#Other packages
+library(ggplot2)
+library(ggsci)
+library(parallel)
+library(tidyr)
+library(dplyr)
+library(data.table)
+library(assertthat)
+library(viridis)
+library(knitr)
+
+
+#Basic format for figs (optional)
+scheme_basic <- theme_bw() +
+  theme(legend.text = element_text(size = 15)) +
+  theme(legend.title = element_text(size = 15)) +
+  theme(axis.text = element_text(size = 18)) +
+  theme(axis.title = element_text(size = 18, face = "bold")) +
+  theme(plot.title = element_text(size = 15, face = "bold", vjust = 1)) +
+  theme(plot.subtitle = element_text(size = 9, face = "bold", vjust = 1))+ 
+  theme(strip.text = element_text(size = 7))+
+  theme(strip.text.x = element_text(size = 18, face = "bold"))+
+  theme(strip.text.y = element_text(size = 15, face = "bold"))+
+  theme(legend.position = "bottom")+
+  theme(legend.text = element_text(size = 12))+
+  theme(legend.title = element_text(size = 12,color = "black",face="bold"))+
+  theme(axis.text.x= element_text(hjust=1))+
+  theme(legend.background = element_blank(),
+        legend.box.background = element_rect(colour = "black"))
+```
+
+
+### Example 1: Generate deciles using lognormal approach
+
+#### `Load a sample dataset`
+```{r, warning=FALSE, message=FALSE}
+
+read.csv("Input_Data/Wider_aggregated_deciles.csv", stringsAsFactors = FALSE) %>%
+  select(country, year, gdp_ppp_pc_usd2011, gini) %>%
+  distinct() %>%
+  mutate(sce="Historical data") %>% 
+  filter(year > 2013)->data_for_lognorm
+
+knitr::kable(head(data_for_lognorm), format = "html")
+```
+
+#### `Use the lognormal model on this dataset`
+```{r, warning=FALSE, message=FALSE,echo=TRUE}
+start_time= Sys.time()
+compute_deciles_lognormal(data_for_lognorm)->lognormal_model
+
+end_time=Sys.time()
+
+print(paste0("Processed in ",as.integer(end_time-start_time), " seconds"))
+
+knitr::kable(head(lognormal_model), format = "html")
+
+```
+
+### Example 2: Generate lognormal density dist (For an abritary set of parameters)
+```{r, warning=FALSE, message=FALSE}
+
+density_dist_1 <- compute_lognormal_dist(mean_income = 15,gini=0.6) %>% mutate(gini=as.character(0.6))
+density_dist_2 <- compute_lognormal_dist(mean_income = 15,gini=0.3)%>% mutate(gini=as.character(0.3))
+density_dist_3 <- compute_lognormal_dist(mean_income = 15,gini=0.2)%>% mutate(gini=as.character(0.2))
+
+g <- ggplot(data=bind_rows(density_dist_3,density_dist_2,density_dist_1), aes(x=gdp_pcap,y=density,color=gini))+
+     geom_line(size =2)+scale_color_aaas()+ xlab("Income in Thous USD")
+
+g+scheme_basic
+
+```
+
+### Example 3. Use the PCA based model 
+
+#### `Compile data (This is the dataset format that needs to be passed to the function)`
+```{r, warning=FALSE, message=FALSE}
+sample_data <- read.csv("Input_Data/sample_data.csv")
+knitr::kable(head(sample_data), format = "html")
+
+```
+#### `Run PC model on this dataset`
+```{r, warning=FALSE, message=FALSE}
+start_time <- Sys.time()
+
+PC_model_results <- PC_model(sample_data %>% filter(iso=="usa"))
+
+
+print(paste0("Completed in ", as.integer(Sys.time()-start_time), " seconds."))
+
+knitr::kable(head(PC_model_results), format = "html")
+
+
+```
+#### `Plot results`
+```{r, warning=FALSE, message=FALSE}
+g <- ggplot(data=PC_model_results %>% filter(year %in% c(2010:2015)) ,aes(x=factor(Category,levels =c('d1','d2','d3','d4',
+  'd5','d6','d7','d8',                                                                                'd9','d10')),y=pred_shares,color=year,group=year))+
+     geom_line()+
+     geom_point()+scale_color_viridis()+xlab("Deciles")+
+     ggtitle("Income distributions in the US in multiple years  ")
+
+g+scheme_basic+theme(legend.position = "right")
+    
+```
+### Example 4: Generate GINI for a given set of deciles
+```{r, warning=FALSE, message=FALSE}
+gini_data <-compute_gini_deciles(PC_model_results %>% mutate(category=Category), inc_col = "pred_shares",grouping_variables = c("country","year")) %>% rename(gini=output_name)
+knitr::kable(head(gini_data), format = "html")
+```
+### Example 5. Aggregate deciles to a region (Here we aggregate country level distributions to a global distribution)
+
+#### `Compile data`
+```{r, warning=FALSE, message=FALSE}
+read.csv("Input_Data/Wider_aggregated_deciles.csv", stringsAsFactors = FALSE) %>%
+  select(country, year, gdp_ppp_pc_usd2011, population,Income..net.,Category) %>% filter(year%in% c(2015)) %>% mutate(GCAM_region_ID="Global")->ISO_data
+knitr::kable(head(ISO_data), format = "html")
+
+```
+
+#### `Aggregate the distribution`
+```{r, warning=FALSE, message=FALSE}
+
+
+aggregate_country_deciles_to_regions(ISO_data,
+                                     grouping_variables = c("GCAM_region_ID","year")
+                                     )->agg_data
+
+knitr::kable(head(agg_data), format = "html")
+```
+
+#### `Plot the distributions`
+
+```{r, warning=FALSE, message=FALSE}
+g <- ggplot(data=ISO_data,aes(x=factor(Category,levels =c('d1','d2','d3','d4',
+  'd5','d6','d7','d8',                                                                                'd9','d10')),y=Income..net.),group=country)+
+     geom_line(data=ISO_data,aes(x=factor(Category,levels =c('d1','d2','d3','d4',
+  'd5','d6','d7','d8',                                                                                'd9','d10')),y=Income..net.,group=country),color="grey")+
+     geom_point(color="grey")+scale_color_aaas()+xlab("Deciles")+facet_wrap(~year)+
+     geom_line(data=agg_data, aes(x=factor(category,levels =c('d1','d2','d3','d4',
+  'd5','d6','d7','d8',                                                                                'd9','d10')),y=shares),color="black",group=agg_data$GCAM_region_ID,size=2.5)+
+     ylab("shares")+
+     xlab("Deciles")+
+  ggtitle("Grey lines are country level distributions, black line is \naggregated global distribution in 2015")
+
+g+scheme_basic
+```
+

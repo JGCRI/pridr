@@ -1,6 +1,6 @@
 ---
-title: "Tutorial for `pridr` software package, prepared for IAMC 2022"
-Authors: Kanishka B. Narayan, Brian C. O'Neill, Stephanie Waldhoff, Claudia Tebaldi
+title: "Tutorial for the `pridr` software package, prepared for IAMC 2022"
+authors: Kanishka B. Narayan, Brian C. O'Neill, Stephanie Waldhoff, Claudia Tebaldi
   & Kelly C. Casper
 output:
    html_document:
@@ -13,9 +13,9 @@ output:
     #inverse: true
 
 ---
+## Pre-processing, loading libraries
 
-
-```{r setup, include=FALSE, warning=FALSE, message=FALSE}
+```{r setup, warning=FALSE, message=FALSE}
 ##LOAD our package
 library(pridr)
 
@@ -50,7 +50,6 @@ scheme_basic <- theme_bw() +
   theme(legend.background = element_blank(),
         legend.box.background = element_rect(colour = "black"))
 ```
-# Examples
 
 ## Example 1: Generate deciles using lognormal approach
 

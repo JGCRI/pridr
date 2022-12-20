@@ -1,8 +1,22 @@
-#Create inverted error function. Will need this for lognormal calculations below.
+
+##All functions related to code.
+## TODO- Need to split these out into different functions
+
+
+#' Create inverted error function. Will need this for lognormal calculations below.
+#'
+#' @param x simple vector
+#' @export
 erfinv <- function (x) qnorm((1 + x)/2)/sqrt(2)
 
 
-#Function to calculate GINI coefficient from deciles.
+
+#' Function to calculate GINI coefficient from deciles.
+#'
+#' @param df dataframe with decile data
+#' @param inc_col column with income shares. Make sure these are normalized that is they range from 0-1
+#' @param grouping_variables variables to group by
+#' @export
 compute_gini_deciles<- function(df, inc_col = "shares",
                                 grouping_variables = c("region","year","sce","model","method") ){
 
@@ -26,6 +40,12 @@ compute_gini_deciles<- function(df, inc_col = "shares",
 
   return(df)}
 
+#' Helper function to calculate centers for the PC model.
+#'
+#' @param df dataframe with decile data
+#' @param category_col column with categorical definitions for deciles
+#' @param value_col Name of values to be output.
+#' @export
 get_centers <- function(df, category_col = "category",
                         value_col = "value"){
 
@@ -41,6 +61,13 @@ get_centers <- function(df, category_col = "category",
 
 }
 
+#' Helper function to calculate centers and standard deviation for the PC model.
+#'
+#' @param df dataframe with decile data
+#' @param category_col column with categorical definitions for deciles
+#' @param value_col Name of values to be output.
+#' @param SCALE Boolean which defines if the PC analysis is to be scaled or not.
+#' @export
 get_sd_center <- function(df, category_col = "category",
                           value_col = "value",SCALE=TRUE){
 
@@ -73,7 +100,16 @@ get_sd_center <- function(df, category_col = "category",
 
 }
 
-
+#' Helper function to get PC loadings or components from raw data
+#'
+#' @param df dataframe with decile data
+#' @param category_col column with categorical definitions for deciles
+#' @param value_col Name of values to be output.
+#' @param number_of_features The number of features or dimensions in data. By default is set to 10 to calculate loadings/components
+#' for deciles.
+#' @param SCALE Boolean which defines if the PC analysis is to be scaled or not.
+#' @param grouping_variables variables to group by
+#' @export
 get_PCA_loadings <- function(df,
                              category_col = "category",
                              value_col = "value",SCALE=TRUE,
@@ -116,11 +152,21 @@ get_PCA_loadings <- function(df,
   return(as_tibble(pc_results))
 }
 
+
+#' Function to calculate coefficients from raw data
+#'
+#' @param df dataframe with decile data
+#' @param category_col column with categorical definitions for deciles
+#' @param value_col Name of values to be output.
+#' @param center_and_scaler_data The centers and SD for the data. This is pre-saved. But can be generated using `get_sd_center()` above.
+#' @param SCALE Boolean which defines if the PC analysis is to be scaled or not.
+#' @param grouping_variables variables to group by
+#' @export
 compute_components_data <- function(df,center_and_scaler_data=pc_center_sd,
-                               pc_loadings =pc_loading_matrix,category_col = "Category",
-                               value_col = "value",SCALE=TRUE,
-                               number_of_features =10,
-                               grouping_variables= c("country", "year")){
+                                    pc_loadings =pc_loading_matrix,category_col = "Category",
+                                    value_col = "value",SCALE=TRUE,
+                                    number_of_features =10,
+                                    grouping_variables= c("country", "year")){
 
   if(is.null(center_and_scaler_data)){
 
@@ -160,7 +206,17 @@ compute_components_data <- function(df,center_and_scaler_data=pc_center_sd,
 
 }
 
-
+#' Function to calculate deciles from components and coefficients
+#'
+#' @param df dataframe with decile data
+#' @param use_second_comp Use one component or use two. By default use two.
+#' @param features The categorical names of the features you want to extract.
+#' @param category_col column with categorical definitions for deciles
+#' @param value_col Name of values to be output.
+#' @param center_and_scaler_data The centers and SD for the data. This is pre-saved. But can be generated using `get_sd_center()` above.
+#' @param input_df If user wants to calculate new centers and scalers, then they can pass an input df which will be used to calculate the new params.
+#' @param grouping_variables variables to group by
+#' @export
 get_deciles_from_components <- function(df,use_second_comp = TRUE,
                                         pc_loadings =pc_loading_matrix,
                                         center_and_scaler = pc_center_sd,
@@ -214,7 +270,7 @@ get_deciles_from_components <- function(df,use_second_comp = TRUE,
 
   if(nrow(negative_features>0)){
 
-    print(paste0("There are negative values for ",nrow(negative_features), " observations. Please use the correction function to correct negative values!."))
+    #print(paste0("There are negative values for ",nrow(negative_features), " observations. Please use the correction function to correct negative values!."))
   }
 
   df_with_pred_shares %>%
@@ -225,6 +281,16 @@ get_deciles_from_components <- function(df,use_second_comp = TRUE,
 }
 
 
+
+#' Function to adjust any negative predicted features
+#'
+#' Sometimes PC model can generate negative values for some features. E.g. South Africa where GINI is much too high.
+#' Here, the function adjusts negative predicted features.
+#'
+#' @param df dataframe with decile data
+#' @param min_lowest_feature_val Lowest possible value for lowest feature (e.g. d1).
+#' @param grouping_variables variables to group by
+#' @export
 adjust_negative_predicted_features <- function(df,
                                                min_lowest_feature_val = 0.006,
                                                grouping_variables = c("country","year")){
@@ -248,7 +314,7 @@ adjust_negative_predicted_features <- function(df,
   negative_features <- adjusted_features  %>% filter(pred_shares <0)
 
   while(nrow(negative_features)> 0){
-    print(paste0("There are still ",nrow(negative_features)," negative observations. Restarting loop."))
+    #print(paste0("There are still ",nrow(negative_features)," negative observations. Restarting loop."))
     adjusted_features %>%group_by(across(grouping_variables)) %>%
       arrange(pred_shares) %>%
       mutate(min_val = min(pred_shares),
@@ -273,56 +339,14 @@ adjust_negative_predicted_features <- function(df,
   return(adjusted_features)
 }
 
-GINI_downscaling_model <- function(df,gini_col = "gini",
-                                   intercept=-0.347554,
-                                   coeff=0.872650,
-                                   raw_data=df,
-                                   base_year=2015,
-                                   grouping_variables = c("country"),
-                                   historical_fit = TRUE,
-                                   start_index =4,
-                                   pc_loadings = NULL){
-
-  df %>%
-    mutate(Component1= (!!as.name(gini_col)*coeff)+intercept)->df_w_Comp1
-
-  if(historical_fit){
-    df_comp_2 <- compute_components_data(raw_data, d1_start_col = start_index) %>%
-      select(c(grouping_variables,"Component2","year")) %>%
-      distinct()
-
-    df_w_Comp1 %>%
-      left_join(df_comp_2, by = c(grouping_variables,"year"))->df_consolidated
-  }else{
-
-    df_comp_2 <- compute_components_data(raw_data, d1_start_col = start_index) %>%
-      group_by(across(grouping_variables)) %>%
-      mutate(max_year = max(year))%>%
-      ungroup() %>%
-      filter(year == max_year) %>%
-      select(c(grouping_variables,"Component2")) %>%
-      distinct()
-
-    df_w_Comp1 %>%
-      left_join(df_comp_2, by = c(grouping_variables))->df_consolidated
-
-
-  }
-  pca_stats <- run_PCA(raw_data,start_index =start_index)
 
 
 
-  df_deciles <- get_deciles_from_components(df_consolidated,
-                                            center = get_center_PCA(raw_data),
-                                            scaler = get_sd(raw_data),
-                                            pc_loadings = pca_stats$rotation)
-
-
-  return(df_deciles)
-}
-
-
-
+#' Function to aggregate country deciles to regions
+#'
+#' @param df dataframe with decile data
+#' @param grouping_variables variables to group by. This should point to the new regional mapping and any other dimension that you want to aggregate to.
+#' @export
 aggregate_country_deciles_to_regions <- function(df,value_col="Income..net.",grouping_variables = c("GCAM_region_ID","year")){
 
 
@@ -514,12 +538,18 @@ aggregate_country_deciles_to_regions <- function(df,value_col="Income..net.",gro
 
 }
 
-
+#' Function to compute lognormal density distribution for arbritary params
+#'
+#' @param mean_income Average income level in thous USD
+#' @param gini GINI coeff ranging from 0 to 1
+#' @param max_income cutoff for max income. Set to 10 times the mean by default.
+#' @param len_sample The number of samples to draw for lognormal. Default is set to 2000.
+#' @export
 compute_lognormal_dist <- function(mean_income, gini, max_income=mean_income*10, len_sample=2000){
 
   sd <- 2 * erfinv(gini)
   m <- log(mean_income) -((sd^2)/2)
- #print(paste0("sd = ",sd, " m=",m))
+  #print(paste0("sd = ",sd, " m=",m))
   len_sample <- len_sample
   max_income <- max_income
   draws3 <- dlnorm(seq(0, max_income, length.out=len_sample), m, sd)
@@ -531,6 +561,11 @@ compute_lognormal_dist <- function(mean_income, gini, max_income=mean_income*10,
   return(draw_d)
 }
 
+#' Function to compute lognormal distribution for individual countries. This is passed for parallelization.
+#'
+#' @param df Dataset that should contain cols- `gdp_ppp_pc_usd2011` which is income in thous USD. `gini` which is the GINI coeff
+#' `year` year of observation, `sce` which is the scenario name
+#' @export
 compute_lognormal_country <- function(df){
 
   mean <- (df$gdp_ppp_pc_usd2011)
@@ -592,6 +627,12 @@ compute_lognormal_country <- function(df){
 
 }
 
+#' Function to compute deciles using lognormal distribution
+#'
+#' @param df Dataset that should contain cols- `gdp_ppp_pc_usd2011` which is income in thous USD. `gini` which is the GINI coeff
+#' `year` year of observation, `sce` which is the scenario name
+#' @param print_progress Boolean which specifies if progress should be printed. A txt file will be generated.
+#' @export
 compute_deciles_lognormal <- function(df, print_progress = TRUE){
 
   for (i in c("country","sce","year")){
@@ -617,9 +658,15 @@ compute_deciles_lognormal <- function(df, print_progress = TRUE){
 
 
 
-  }
+}
 
-
+#' Function to calculate palma ratio from deciles
+#'
+#' @param df dataframe with decile data
+#' @param inc_col column with income shares. Make sure these are normalized that is they range from 0-1
+#' @param group_cols variables to group by
+#' @param category_col column with categorical definitions for deciles
+#' @export
 compute_palma_ratio <- function(df,
                                 group_cols = c("country", "year"),
                                 category_col = "Category",
@@ -631,7 +678,7 @@ compute_palma_ratio <- function(df,
     dplyr::select(all_of(group_cols),palma_ratio) %>%
     distinct()->df_return
 
-    return(df_return)
+  return(df_return)
 
 }
 
@@ -649,10 +696,18 @@ approx_fun <- function(year, value, rule = 1) {
   }
 }
 
+#' Function to calculate PC coefficients for future years
+#'
+#' @param df dataframe with decile data
+#' @param inc_col column with income shares. Make sure these are normalized that is they range from 0-1
+#' @param grouping_variables variables to group by
+#' @param category_col column with categorical definitions for deciles
+#' @param value_col Name of values to be output.
+#' @export
 compute_PC_model_components <- function(df,grouping_variables=c("country","year"),
                                         value_col="Income..net."){
   print("Starting computation")
- pred_shares <- NULL
+  pred_shares <- NULL
   df %>% arrange(year)->df
 
 
@@ -662,14 +717,14 @@ compute_PC_model_components <- function(df,grouping_variables=c("country","year"
 
   #Dont know why we needed to define another version of this function here. For some reason, parallel Lapply does not like it.
   get_deciles_from_components_temp <- function(df,use_second_comp = TRUE,
-                                          pc_loadings =pc_loading_matrix,
-                                          center_and_scaler = pc_center_sd,
-                                          features = c("d1","d2","d3","d4",
-                                                       "d5","d6","d7","d8","d9","d10"),
-                                          category_col ="Category",
-                                          input_df= Wider_data_full,
-                                          value_col = NULL,
-                                          grouping_variables = NULL){
+                                               pc_loadings =pc_loading_matrix,
+                                               center_and_scaler = pc_center_sd,
+                                               features = c("d1","d2","d3","d4",
+                                                            "d5","d6","d7","d8","d9","d10"),
+                                               category_col ="Category",
+                                               input_df= Wider_data_full,
+                                               value_col = NULL,
+                                               grouping_variables = NULL){
 
 
     pred_shares <- NULL
@@ -735,21 +790,21 @@ compute_PC_model_components <- function(df,grouping_variables=c("country","year"
       df$Component1[row] <- -11.48 +  (29.72*df$gini[row])
       df$Component2[row] <- -17.77579 +(df$labsh[row]*0.99944)+(112.35374*df$lagged_ninth_decile[row])+(df$lagged_palma_ratio[row]*-0.34552)
 
-       year_temp <- df$year[row]
-       df %>%
+      year_temp <- df$year[row]
+      df %>%
         get_deciles_from_components_temp(grouping_variables = grouping_variables,
                                          value_col = value_col) %>%
-         filter(year ==year_temp) %>%
-         mutate(pred_shares = if_else(is.na(pred_shares),0.0005,pred_shares))->computed_deciles
+        filter(year ==year_temp) %>%
+        mutate(pred_shares = if_else(is.na(pred_shares),0.0005,pred_shares))->computed_deciles
 
-       palma_ratio <- computed_deciles %>% spread(Category,pred_shares) %>% mutate(palma_ratio= d10/(d1+d2+d3+d4))
+      palma_ratio <- computed_deciles %>% spread(Category,pred_shares) %>% mutate(palma_ratio= d10/(d1+d2+d3+d4))
 
       #
       #
-       computed_deciles %>%
-         filter(year == df$year[row]) %>%
-         filter(Category=="d9") %>%
-         rename(shares=pred_shares)->ninth_decile_value
+      computed_deciles %>%
+        filter(year == df$year[row]) %>%
+        filter(Category=="d9") %>%
+        rename(shares=pred_shares)->ninth_decile_value
       #
       #Rewrite autoregressive terms for next year
       df$lagged_ninth_decile[row+1] <- unique(ninth_decile_value$shares)
@@ -768,6 +823,13 @@ compute_PC_model_components <- function(df,grouping_variables=c("country","year"
   return(df)
 }
 
+#' Function to calculate deciles using PC model
+#'
+#' @param df dataframe with all IV data. These are output by `compile_IV_data()`.
+#' @param grouping_variables variables to group by
+#' @param id_col column to split by for parallelization
+#' @param value_col Name of values to be output.
+#' @export
 PC_model <- function(df,grouping_variables=c("country","year"),
                      value_col="Income..net.",
                      id_col = c("country")){
@@ -778,7 +840,7 @@ PC_model <- function(df,grouping_variables=c("country","year"),
     mutate(id= cur_group_id()) %>%
     ungroup()->data_for_split
 
-  print(head(data_for_split))
+
   data_for_func <- split(data_for_split, data_for_split$id)
 
   cl <- create_cores()
@@ -787,7 +849,7 @@ PC_model <- function(df,grouping_variables=c("country","year"),
 
   stopCluster(cl)
 
-  print("Now generating deciles")
+  print("Computed all coeffcients in each time step. Now generating deciles")
 
   t_data <- rbindlist(t) %>%
     get_deciles_from_components(use_second_comp = TRUE,grouping_variables = grouping_variables) %>%

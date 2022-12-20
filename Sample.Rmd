@@ -1,10 +1,18 @@
 ---
-title: "Income_Distribution_test"
+title: "Tutorial for `pridr` software package, prepared for IAMC 2022"
+Authors: Kanishka B. Narayan, Brian C. O'Neill, Stephanie Waldhoff, Claudia Tebaldi
+  & Kelly C. Casper
 output:
-  pdf_document: default
-  html_document: default
+  pdf_document:
+    toc: yes
+  html_document:
+    toc: yes
+    toc_float: yes
+    toc_collapsed: yes
+    theme: cosmo
 ---
 
+# Load packages
 ```{r setup, include=FALSE}
 ##LOAD our package
 library(pridr)
@@ -18,7 +26,7 @@ library(tidyr)
 library(dplyr)
 library(data.table)
 library(assertthat)
-
+library(viridis)
 
 #Basic format for figs (optional)
 scheme_basic <- theme_bw() +
@@ -39,9 +47,10 @@ scheme_basic <- theme_bw() +
         legend.box.background = element_rect(colour = "black"))
 ```
 
-### Load a sample dataset
+## Example 1. Generate deciles using lognormal approach
 
-```{r cars}
+### Load a sample dataset
+```{r}
 
 read.csv("Input_Data/Wider_aggregated_deciles.csv", stringsAsFactors = FALSE) %>%
   select(country, year, gdp_ppp_pc_usd2011, gini) %>%
@@ -51,7 +60,7 @@ read.csv("Input_Data/Wider_aggregated_deciles.csv", stringsAsFactors = FALSE) %>
 head(data_for_lognorm)
 ```
 
-## 1. Generate deciles using lognormal approach
+### Use the lognormal model on this data
 ```{r pressure, echo=FALSE}
 start_time= Sys.time()
 compute_deciles_lognormal(data_for_lognorm)->lognormal_model
@@ -62,7 +71,7 @@ end_time=Sys.time()
 print(paste0("Processed in ",as.integer(end_time-start_time), " seconds"))
 ```
 
-## 2. Generate lognormal density dist
+## Example 2. Generate lognormal density dist (For an abritary set of parameters)
 ```{r}
 
 density_dist_1 <- compute_lognormal_dist(mean_income = 15,gini=0.6) %>% mutate(gini=as.character(0.6))
@@ -70,13 +79,15 @@ density_dist_2 <- compute_lognormal_dist(mean_income = 15,gini=0.3)%>% mutate(gi
 density_dist_3 <- compute_lognormal_dist(mean_income = 15,gini=0.2)%>% mutate(gini=as.character(0.2))
 
 g <- ggplot(data=bind_rows(density_dist_3,density_dist_2,density_dist_1), aes(x=gdp_pcap,y=density,color=gini))+
-     geom_line()+scale_color_aaas()
+     geom_line(size =2)+scale_color_aaas()+ xlab("Income in Thous USD")
 
 g+scheme_basic
 
 ```
 
-### Compile data
+## Example 3. Use the PCA based model 
+
+### Compile data (This is the dataset format that needs to be passed to the function)
 ```{r}
 
 IV_data <- compile_independent_variables() %>% mutate(Component1_act= Component1, Component2_act= Component2)
@@ -108,31 +119,35 @@ Final_historical_data %>% filter(iso %in% c("ind","chn","usa"))->sample_data
 head(sample_data)
 
 ```
-## 3. Run PC model
+### Run PC model
 ```{r}
 start_time <- Sys.time()
-PC_model_results <- PC_model(sample_data)
+
+PC_model_results <- PC_model(sample_data %>% filter(iso=="usa"))
+
 head(PC_model_results)
 
 print(paste0("Completed in ", as.integer(Sys.time()-start_time), " seconds."))
 ```
-## Plot deciles
+### Plot deciles
 ```{r}
-g <- ggplot(data=PC_model_results %>% filter(year==2010),aes(x=factor(Category,levels =c('d1','d2','d3','d4',
-  'd5','d6','d7','d8',                                                                                'd9','d10')),y=pred_shares,color=country,group=country))+
+g <- ggplot(data=PC_model_results %>% filter(year %in% c(2010:2015)) ,aes(x=factor(Category,levels =c('d1','d2','d3','d4',
+  'd5','d6','d7','d8',                                                                                'd9','d10')),y=pred_shares,color=year,group=year))+
      geom_line()+
-     geom_point()+scale_color_aaas()+xlab("Deciles")
+     geom_point()+scale_color_viridis()+xlab("Deciles")+
+     ggtitle("Income distributions in the US in multiple years  ")
 
-g+scheme_basic
+g+scheme_basic+theme(legend.position = "right")
     
 ```
-## 4. Generate GINI for a given set of deciles
+## Example 4: Generate GINI for a given set of deciles
 ```{r}
 gini_data <-compute_gini_deciles(PC_model_results %>% mutate(category=Category), inc_col = "pred_shares",grouping_variables = c("country","year"))
 head(gini_data)
 ```
-## 5. Aggregate deciles to a region
+## Example 5. Aggregate deciles to a region (Here we aggregate country level distributions to a global distribution)
 
+### Compile data
 ```{r}
 read.csv("Input_Data/Wider_aggregated_deciles.csv", stringsAsFactors = FALSE) %>%
   select(country, year, gdp_ppp_pc_usd2011, population,Income..net.,Category) %>% filter(year%in% c(2015)) %>% mutate(GCAM_region_ID="Global")->ISO_data
@@ -140,63 +155,32 @@ read.csv("Input_Data/Wider_aggregated_deciles.csv", stringsAsFactors = FALSE) %>
 head(ISO_data)
 ```
 
-
+### Aggregate the distribution
 ```{r}
-aggregate_country_deciles_to_regions(ISO_data,grouping_variables = c("GCAM_region_ID","year"))->agg_data
+
+
+aggregate_country_deciles_to_regions(ISO_data,
+                                     grouping_variables = c("GCAM_region_ID","year")
+                                     )->agg_data
+
+
 head(agg_data)
 ```
 
-
+### Plot the distributions
 
 ```{r}
-g <- ggplot(data=agg_data,aes(x=factor(category,levels =c('d1','d2','d3','d4',
-  'd5','d6','d7','d8',                                                                                'd9','d10')),y=shares,group=GCAM_region_ID))+
-     geom_line()+
-     geom_point()+scale_color_aaas()+xlab("Deciles")+facet_wrap(~year)
+g <- ggplot(data=ISO_data,aes(x=factor(Category,levels =c('d1','d2','d3','d4',
+  'd5','d6','d7','d8',                                                                                'd9','d10')),y=Income..net.),group=country)+
+     geom_line(data=ISO_data,aes(x=factor(Category,levels =c('d1','d2','d3','d4',
+  'd5','d6','d7','d8',                                                                                'd9','d10')),y=Income..net.,group=country),color="grey")+
+     geom_point(color="grey")+scale_color_aaas()+xlab("Deciles")+facet_wrap(~year)+
+     geom_line(data=agg_data, aes(x=factor(category,levels =c('d1','d2','d3','d4',
+  'd5','d6','d7','d8',                                                                                'd9','d10')),y=shares),color="black",group=agg_data$GCAM_region_ID,size=2.5)+
+     ylab("shares")+
+     xlab("Deciles")+
+  ggtitle("Grey lines are country level distributions, black line is \naggregated global distribution in 2015")
 
 g+scheme_basic
-```
-
-
-## 6. Model inter-operability
-
-
-```{r}
-library(ambrosia)
-
-PC_model_results %>% 
-  filter(country=="India",year==2010) %>% 
-  mutate(gpp_pc = (5000*1000000*pred_shares)/100000,
-         Ps=0.6,
-         Pn=1.2)->data_for_food_model
-
-head(data_for_food_model)
-
-```
-
-```{r}
-food_demand <- food.dmnd(data_for_food_model$Ps,data_for_food_model$Pn,data_for_food_model$gpp_pc/1000)
-
-food_demand$gdp_pc <- data_for_food_model$gpp_pc/1000
-food_demand$Category <- data_for_food_model$Category
-head(food_demand)
-```
-```{r}
-g <- ggplot(data=food_demand %>% mutate(id="A"), aes(x=gdp_pc,y=Qs+Qn,color=Category,group=id))+
-     geom_point(size=3)+scale_color_aaas()+geom_line(color="grey")
-
-g+scheme_basic
-```
-
-
-
-
-
-
-## 7. Generate results using single component
-```{r}
-get_deciles_from_components(PC_model_results,use_second_comp = FALSE,grouping_variables = c("country","year"))->Single_comp_results
-
-head(Single_comp_results)
 ```
 

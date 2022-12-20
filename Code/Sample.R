@@ -9,6 +9,7 @@ library(knitr)
 library(data.table)
 library(assertthat)
 library(rpart)
+library(pridr)
 
 
 
@@ -157,7 +158,9 @@ data_comp_2 %>% left_join(data_comp_1 %>% select(shares_w_comp1 = pred_shares,co
   ungroup() %>%
   #select(country,abs_perc_error,year) %>%
   distinct() %>%
-  mutate(category=Category) %>%
+  mutate(category=Category,
+         category_f = factor(Category, levels= c("d1","d2","d3","d4","d5",
+                                                 "d6","d7","d8","d9","d10"))) %>%
   compute_gini_deciles(grouping_variables = c("country","year"), inc_col = "pred_shares")->t
 
 g <- ggplot(data= t %>% filter(Category=="d10"), aes(x=output_name, y=palma_ratio))+
@@ -169,11 +172,11 @@ g+scheme_basic
 
 
 
-g <- ggplot(data=t, aes(x=abs(Component2), y= abs(abs_perc_error*100)))+
+g <- ggplot(data=t, aes(x=(Component2), y= (abs_perc_error*100)))+
      geom_point()+
-     xlab("Absolute value of Component2")+
-     ylab("Difference in perc points")+
-     facet_wrap(~Category, scales="free")
+     xlab("value of Component2")+
+     ylab("Difference in income shares (Shares ONLY WITH PC1 - Shares with PC1 and PC2)")+
+     facet_wrap(~category_f, scales="free")
 
 g+scheme_basic
 
@@ -184,7 +187,8 @@ t %>% #filter(year %in% c(2010:2015)) %>%
   mutate(abs_perc_error=sum(abs_perc_error)) %>%
   ungroup() %>%
   select(-Category)%>% distinct() %>%
-  mutate(abs_Comp2 = abs(Component2))->base_year_data
+  mutate(abs_Comp2 = abs(Component2),
+         Category_f = factor(Category, levels = c("d1","d2")))->base_year_data
 
 base_year_data %>%
   filter(abs_Comp2 > 1.5) %>%
@@ -196,31 +200,30 @@ base_year_data %>%
 
 anomalies %>% filter(Category != "d10")->p
 data_comp_1 %>%
-  filter((Component2)> 0) %>%
+  #filter((Component2)> 0) %>%
   spread(Category,pred_shares) %>%
   mutate(palma_ratio_single= d10/(d1+d2+d3+d4)) %>%
   left_join(data_comp_2 %>%
-              filter((Component2)> 0) %>%
+              #filter((Component2)> 0) %>%
               spread(Category,pred_shares) %>%
               mutate(palma_ratio_two= d10/(d1+d2+d3+d4)) %>%
-              dplyr::select(country,year,palma_ratio_two))->palma_compare
+              dplyr::select(country,year,palma_ratio_two,Component2)) %>%
+  mutate(diff=palma_ratio_two-palma_ratio_single)->palma_compare
 
 data_comp_2 %>%
   #filter((Component2)> 0) %>%
   spread(Category,pred_shares) %>%
   mutate(palma_ratio_two= d10/(d1+d2+d3+d4)) ->t
 
-g <- ggplot(data=palma_compare, aes(x=palma_ratio_single,
-                                    y=palma_ratio_two))+
+g <- ggplot(data=palma_compare, aes(x=abs(Component2),
+                                    y=abs(diff)))+
      geom_point()+
-     geom_abline(slope=1,linetype="dashed")+
-     xlim(0,12)+
-     ylim(0,12)
+     geom_abline(slope=1,linetype="dashed")
 
 g+scheme_basic
 
-g <- ggplot(data=t, aes(x=(Component2),
-                                    y=palma_ratio_two))+
+g <- ggplot(data=t, aes(x=abs(Component2),
+                                    y=d1))+
   geom_point()+
   geom_abline(slope=1,linetype="dashed")
 
@@ -302,7 +305,7 @@ Consolidated_data$pred_Comp1 <- 7.469648+(Consolidated_data$gdp_ppp_pc_usd2011*-
 
 Consolidated_data %>% filter(year >=2004) %>%
   mutate(Component1 = (gini*29.71708)-11.4815 ,
-         Component2 = -17.12887 +(112.73476*lagged_ninth_decile)+(labsh*1.09037)+(lagged_palma_ratio * -0.36292)) %>%
+         Component2 = -17.77579 +(112.73476*lagged_ninth_decile)+(labsh*0.99944)+(lagged_palma_ratio * -0.36292)) %>%
   get_deciles_from_components(pc_loadings = pc_loading_matrix,
                               center_and_scaler = pc_center_sd,
                               category_col = "Category",

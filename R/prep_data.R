@@ -1,7 +1,7 @@
 #Functions to prep data
 
-compile_independent_variables<- function(){
-  Wider_data_full <- read.csv("C:/Projects/Inequality_data_processing/Input_Data/WIDER_aggregated_deciles.csv",stringsAsFactors = FALSE) %>%
+compile_independent_variables<- function(path_to_input="Input_Data/"){
+  Wider_data_full <- read.csv(paste0(path_to_input,"WIDER_aggregated_deciles.csv"),stringsAsFactors = FALSE) %>%
     arrange(year)
 
   Wider_data_full %>% compute_components_data(center_and_scaler_data = pc_center_sd,
@@ -25,7 +25,7 @@ compile_independent_variables<- function(){
     adjust_negative_predicted_features()->data_comp_1
 
 
-  Consolidated_data <- read.csv("Input_Data/Consolidated_data.csv",
+  Consolidated_data <- read.csv(paste0(path_to_input,"Consolidated_data.csv"),
                                 stringsAsFactors = FALSE) %>%
     select(-Component2) %>%
     #filter(country %in% c(unique(anomalies$country))) %>%

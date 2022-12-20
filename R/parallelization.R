@@ -1,4 +1,10 @@
 
+
+#' parallelization function to generate multiple cores from the CPU.
+#'
+#' Note that we think this works only for Windows.To make it work for MAC, just change the `makeCluster()` type argument
+#' in the function to FORK.
+#' @export
 create_cores <- function(num_cores=NULL){
   if(is.null(num_cores)){
 

@@ -1,4 +1,4 @@
-# pridr: A software package that can represent and projectincome distributions dynamically using various input data. 
+# pridr: A software package that can represent and project income distributions dynamically.
 
 ## Summary
 This package can flexibly generate income deciles based on multiple approaches such as a lognormal based approach or a more detail PCA driven model.

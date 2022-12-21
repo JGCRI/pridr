@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7468250.svg)](https://doi.org/10.5281/zenodo.7468250)
+
 # pridr: A software package that can represent and project income distributions dynamically.
 
 ## Summary
@@ -29,7 +31,7 @@ The user can also generate all income distribution projections for the SSP scena
 
 
 ## Contributing to `pridr`
-We welcome contributions to `pridr` from the development community. Please contact us at the email IDs below if you want to collaborate! The `pridr` GitHub repository is accessible here: [GitHub Repository](https://github.com/JGCRI/pridr). In order to report issues with `ambrosia`, please open an issue in the above mentioned Github Repository.
+We welcome contributions to `pridr` from the development community. Please contact us at the email IDs below if you want to collaborate! The `pridr` GitHub repository is accessible here: [GitHub Repository](https://github.com/JGCRI/pridr). In order to report issues with `pridr`, please open an issue in the above mentioned Github Repository.
 
 For more information about contributing, please contact Kanishka B. Narayan at kanishka.narayan@pnnl.gov or Kelly Casper at kelly.casper@pnnl.gov
 

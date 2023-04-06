@@ -312,6 +312,23 @@ state_future_projections %>% bind_rows(state_level_deciles_historical %>% mutate
 
 write.csv(consolidated_data, "outputs/US_state_level_distributions/US_50_state_DC_net_income_deciles_2011_2100_SSP.csv",row.names = FALSE)
 
+diag_state="New.York"
+if(print_diagnostics){
+
+  g<-ggplot(data=consolidated_data %>%
+           filter(state==diag_state,Category %in% c("d1","d10")) %>%
+           filter(year>2015),aes(x=year,
+                                 y=pred_shares*100,
+                                 color=sce))+
+    geom_line(size=1.3)+
+    ylab("Predicted shares")+
+    scale_color_npg()+
+    facet_wrap(~Category, scales="free")+
+    labs(subtitle = paste0("Income distribution in ",diag_state))
+
+  g+scheme_basic
+}
+
 
 #Step 3- Aggregate state level income distributions to national level
 ##TODO- Kelly generates this state_decile_gdp file in her workflow. She will update the below
